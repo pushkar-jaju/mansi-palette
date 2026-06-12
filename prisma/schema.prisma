@@ -1,0 +1,104 @@
+generator client {
+  provider   = "prisma-client-js"
+  output     = "../src/generated/prisma"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum PaintingStatus {
+  AVAILABLE
+  SOLD
+}
+
+enum CommissionStatus {
+  PENDING
+  APPROVED
+  IN_PROGRESS
+  COMPLETED
+  DECLINED
+}
+
+model User {
+  id           String              @id @default(cuid())
+  name         String
+  email        String              @unique
+  passwordHash String
+  role         Role                @default(USER)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  orders       Order[]
+  commissions  CommissionRequest[]
+}
+
+model Painting {
+  id          String         @id @default(cuid())
+  title       String
+  description String
+  imageUrl    String
+  price       Float
+  width       Float          // in inches
+  height      Float          // in inches
+  medium      String         // e.g. Oil, Acrylic, Watercolor, Mixed Media
+  canvasType  String         // e.g. Stretched Canvas, Paper, Wood Panel
+  frameOption String         // e.g. Framed, Unframed, Stretched Canvas (Ready to Hang)
+  category    String         // e.g. Landscape, Abstract, Floral, Coastal, Portrait
+  status      PaintingStatus @default(AVAILABLE)
+  isFeatured  Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  orderItems  OrderItem[]
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  userId          String?
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customerName    String
+  customerEmail   String
+  customerPhone   String
+  shippingAddress String
+  totalAmount     Float
+  paymentStatus   String      @default("PENDING") // PENDING, PAID, FAILED
+  paymentId       String?     // Razorpay Payment ID or Transaction ID
+  status          String      @default("PENDING") // PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED
+  items           OrderItem[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model OrderItem {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paintingId String
+  painting   Painting @relation(fields: [paintingId], references: [id])
+  price      Float
+  createdAt  DateTime @default(now())
+}
+
+model CommissionRequest {
+  id               String           @id @default(cuid())
+  userId           String?
+  user             User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  clientName       String
+  clientEmail      String
+  clientPhone      String
+  title            String
+  description      String
+  width            Float
+  height           Float
+  budget           Float
+  referenceUrl     String?          // URL to reference image
+  status           CommissionStatus @default(PENDING)
+  notes            String?          // Admin notes or response
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+}
