@@ -4,6 +4,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { Navbar, Footer } from "@/components/navigation";
 import { GalleryFilters } from "@/components/gallery-filters";
+import { WishlistHeartButton } from "@/components/wishlist-heart-button";
 
 interface PageProps {
   searchParams: Promise<{
@@ -101,11 +102,14 @@ export default async function GalleryPage({ searchParams }: PageProps) {
                     sizes="(max-w-7xl) 33vw, 400px"
                     className="object-cover transition-transform duration-500 group-hover:scale-102"
                   />
-                  {painting.status === "SOLD" && (
-                    <span className="absolute top-2 right-2 px-2.5 py-0.5 text-[9px] font-bold rounded-sm bg-black/70 border border-hairline text-ink-subtle">
-                      SOLD
-                    </span>
-                  )}
+                  <div className="absolute top-2 right-2 flex items-center gap-1.5 z-20">
+                    <WishlistHeartButton paintingId={painting.id} size={15} />
+                    {painting.status === "SOLD" && (
+                      <span className="px-2.5 py-1 text-[9px] font-bold rounded-sm bg-black/70 border border-hairline text-ink-subtle">
+                        SOLD
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex justify-between items-start">
                   <div>
@@ -118,7 +122,7 @@ export default async function GalleryPage({ searchParams }: PageProps) {
                   </div>
                   <div className="flex flex-col items-end">
                     <span className="text-xs font-semibold text-ink text-right">
-                      ${painting.price.toLocaleString()}
+                      ₹{painting.price.toLocaleString()}
                     </span>
                     <span className="text-[9px] text-ink-tertiary mt-1 uppercase tracking-wide text-right">
                       {painting.category}

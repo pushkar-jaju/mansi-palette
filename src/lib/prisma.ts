@@ -16,7 +16,7 @@ const poolConfig = {
   connectionString,
   max: 10,
   idleTimeoutMillis: 30000, // close idle connections after 30s of inactivity
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 15000,
   keepAlive: true,
 };
 

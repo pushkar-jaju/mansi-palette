@@ -2,7 +2,10 @@
 
 import React, { useState, useTransition } from "react";
 import { submitCommissionRequest } from "@/app/commissions/actions";
+import { resendVerificationAction } from "@/app/auth/actions";
 import { Sparkles, Layers, Send, FileImage, CheckCircle2 } from "lucide-react";
+import { useAuth } from "./providers";
+import { useRouter } from "next/navigation";
 
 interface CommissionFormProps {
   initialUser: {
@@ -12,6 +15,8 @@ interface CommissionFormProps {
 }
 
 export function CommissionForm({ initialUser }: CommissionFormProps) {
+  const { user } = useAuth();
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,9 +33,23 @@ export function CommissionForm({ initialUser }: CommissionFormProps) {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    
+    if (!user) {
+      router.push("/auth/login?redirect=/commissions");
+      return;
+    }
+
     setError(null);
 
     const formData = new FormData(e.currentTarget);
+    const clientPhone = formData.get("clientPhone") as string;
+    if (clientPhone) {
+      const phoneRegex = /^[6-9]\d{9}$/;
+      if (!phoneRegex.test(clientPhone)) {
+        setError("Please enter a valid 10-digit Indian mobile number.");
+        return;
+      }
+    }
     
     startTransition(async () => {
       const res = await submitCommissionRequest(formData);
@@ -61,9 +80,26 @@ export function CommissionForm({ initialUser }: CommissionFormProps) {
       </div>
     );
   }
+
+  if (user && !user.emailVerified) {
+    return (
+      <div className="bg-surface-1 border border-hairline rounded-md p-8 flex flex-col gap-5 items-center text-center justify-center min-h-[300px] animate-in fade-in duration-300">
+        <div className="w-12 h-12 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center text-destructive">
+          <Layers className="w-6 h-6 animate-pulse" />
+        </div>
+        <div className="flex flex-col gap-1.5 max-w-sm">
+          <h3 className="text-sm font-semibold text-ink">Email Verification Required</h3>
+          <p className="text-xs text-ink-muted leading-relaxed">
+            Please verify your email address (<strong>{user.email}</strong>) to submit custom commission requests. A verification link has been sent to your inbox.
+          </p>
+        </div>
+        <ResendCommissionButton />
+      </div>
+    );
+  }
  
   return (
-    <form onSubmit={handleSubmit} className="bg-surface-1 border border-hairline rounded-md p-6 sm:p-8 flex flex-col gap-6 relative">
+    <form onSubmit={handleSubmit} key={user?.id || "guest"} className="bg-surface-1 border border-hairline rounded-md p-6 sm:p-8 flex flex-col gap-6 relative">
       <div className="flex flex-col gap-1.5">
         <h3 className="text-sm font-semibold text-ink">Commission Request Form</h3>
         <p className="text-[11px] text-ink-subtle leading-normal">
@@ -88,7 +124,7 @@ export function CommissionForm({ initialUser }: CommissionFormProps) {
             name="clientName"
             required
             autoComplete="name"
-            defaultValue={initialUser?.name || ""}
+            defaultValue={user?.name || ""}
             placeholder="e.g. John Doe…"
             className="bg-canvas text-ink text-xs px-3 py-2.5 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary transition-colors"
           />
@@ -103,7 +139,7 @@ export function CommissionForm({ initialUser }: CommissionFormProps) {
             required
             autoComplete="email"
             spellCheck={false}
-            defaultValue={initialUser?.email || ""}
+            defaultValue={user?.email || ""}
             placeholder="e.g. john@example.com…"
             className="bg-canvas text-ink text-xs px-3 py-2.5 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary transition-colors"
           />
@@ -116,7 +152,13 @@ export function CommissionForm({ initialUser }: CommissionFormProps) {
             id="clientPhone"
             name="clientPhone"
             autoComplete="tel"
-            placeholder="e.g. +1 (555) 000-0000…"
+            placeholder="e.g. 9876543210"
+            pattern="[6-9][0-9]{9}"
+            maxLength={10}
+            onInput={(e) => {
+              e.currentTarget.value = e.currentTarget.value.replace(/\D/g, "");
+            }}
+            title="Please enter a valid 10-digit Indian mobile number."
             className="bg-canvas text-ink text-xs px-3 py-2.5 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary transition-colors"
           />
         </div>
@@ -177,7 +219,7 @@ export function CommissionForm({ initialUser }: CommissionFormProps) {
  
         {/* Budget */}
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="budget" className="text-xs text-ink-muted font-medium">Estimated Budget (USD) *</label>
+          <label htmlFor="budget" className="text-xs text-ink-muted font-medium">Estimated Budget (INR) *</label>
           <input
             type="number"
             id="budget"
@@ -228,5 +270,37 @@ export function CommissionForm({ initialUser }: CommissionFormProps) {
         )}
       </button>
     </form>
+  );
+}
+
+function ResendCommissionButton() {
+  const [isPending, startTransition] = useTransition();
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleResend = () => {
+    setError(null);
+    startTransition(async () => {
+      const res = await resendVerificationAction();
+      if (res.success) {
+        setSent(true);
+        setTimeout(() => setSent(false), 5000);
+      } else {
+        setError(res.error || "Failed to resend.");
+      }
+    });
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-2 w-full mt-2">
+      <button
+        onClick={handleResend}
+        disabled={isPending || sent}
+        className="w-full py-2.5 rounded-sm bg-primary hover:bg-primary-hover border border-primary-focus text-primary-foreground text-xs font-semibold transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+      >
+        {isPending ? "Resending..." : sent ? "Verification Link Sent!" : "Resend Verification Email"}
+      </button>
+      {error && <p className="text-[10px] text-destructive">{error}</p>}
+    </div>
   );
 }

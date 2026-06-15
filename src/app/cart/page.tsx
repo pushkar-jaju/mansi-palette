@@ -6,11 +6,14 @@ import Link from "next/link";
 import { useCart, useAuth } from "@/components/providers";
 import { Navbar, Footer } from "@/components/navigation";
 import { createOrder } from "@/app/cart/actions";
+import { useRouter } from "next/navigation";
+import { resendVerificationAction } from "@/app/auth/actions";
 import { Trash2, ShoppingBag, CreditCard, CheckCircle2, ArrowRight, ShieldCheck, Truck } from "lucide-react";
 
 export default function CartPage() {
   const { cart, removeFromCart, clearCart, cartTotal, cartCount } = useCart();
   const { user } = useAuth();
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
@@ -25,6 +28,10 @@ export default function CartPage() {
 
   const handleCheckout = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!user) {
+      router.push("/auth/login?redirect=/cart");
+      return;
+    }
     setError(null);
 
     const formData = new FormData(e.currentTarget);
@@ -32,6 +39,12 @@ export default function CartPage() {
     const customerEmail = formData.get("email") as string;
     const customerPhone = formData.get("phone") as string;
     const shippingAddress = formData.get("address") as string;
+
+    const phoneRegex = /^[6-9]\d{9}$/;
+    if (!phoneRegex.test(customerPhone)) {
+      setError("Please enter a valid 10-digit Indian mobile number.");
+      return;
+    }
 
     const paintingIds = cart.map((item) => item.id);
 
@@ -98,7 +111,7 @@ export default function CartPage() {
             <hr className="border-hairline" />
             <div className="flex justify-between text-sm font-semibold text-ink">
               <span>Total Paid:</span>
-              <span>${cartTotal.toLocaleString()}</span>
+              <span>₹{cartTotal.toLocaleString()}</span>
             </div>
           </div>
  
@@ -165,7 +178,7 @@ export default function CartPage() {
  
                     <div className="flex items-center gap-4">
                       <span className="text-xs font-semibold text-ink">
-                        ${item.price.toLocaleString()}
+                        ₹{item.price.toLocaleString()}
                       </span>
                       <button
                         onClick={() => removeFromCart(item.id)}
@@ -205,7 +218,7 @@ export default function CartPage() {
                 <h3 className="text-xs font-bold uppercase tracking-wider text-primary">Summary</h3>
                 <div className="flex justify-between text-xs text-ink-muted">
                   <span>Subtotal:</span>
-                  <span className="font-medium text-ink">${cartTotal.toLocaleString()}</span>
+                  <span className="font-medium text-ink">₹{cartTotal.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-xs text-ink-muted">
                   <span>Insured Shipping:</span>
@@ -214,101 +227,173 @@ export default function CartPage() {
                 <hr className="border-hairline" />
                 <div className="flex justify-between text-sm font-semibold text-ink">
                   <span>Grand Total:</span>
-                  <span>${cartTotal.toLocaleString()}</span>
+                  <span>₹{cartTotal.toLocaleString()}</span>
                 </div>
               </div>
 
               {/* Checkout Form */}
-              <form
-                onSubmit={handleCheckout}
-                className="bg-surface-1 border border-hairline rounded-md p-6 flex flex-col gap-4 relative"
-              >
-                <h3 className="text-xs font-bold uppercase tracking-wider text-primary">Shipping & Checkout</h3>
-                
-                {error && (
-                  <div className="p-3 bg-red-950/30 border border-red-900/40 text-red-400 text-xs rounded-sm">
-                    {error}
+              {!user ? (
+                <div className="bg-surface-1 border border-hairline rounded-md p-6 flex flex-col gap-5 items-center text-center justify-center min-h-[300px]">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                    <CreditCard className="w-6 h-6" />
                   </div>
-                )}
-
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="name" className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">Full Name *</label>
-                  <input
-                    type="text"
-                    id="name"
-                    name="name"
-                    required
-                    autoComplete="name"
-                    defaultValue={user?.name || ""}
-                    placeholder="e.g. John Doe…"
-                    className="bg-canvas text-ink text-xs px-3 py-2 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary transition-colors"
-                  />
+                  <div className="flex flex-col gap-1.5 max-w-xs">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-primary">Checkout Required</h4>
+                    <p className="text-[11px] text-ink-subtle leading-normal">
+                      Please sign in or create an account to proceed to checkout and place your order.
+                    </p>
+                  </div>
+                  <Link
+                    href="/auth/login?redirect=/cart"
+                    className="w-full py-3.5 rounded-sm bg-primary hover:bg-primary-hover border border-primary-focus text-primary-foreground text-xs font-semibold transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                  >
+                    Sign In to Place Order
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
                 </div>
-
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="email" className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">Email Address *</label>
-                  <input
-                    type="email"
-                    id="email"
-                    name="email"
-                    required
-                    autoComplete="email"
-                    spellCheck={false}
-                    defaultValue={user?.email || ""}
-                    placeholder="e.g. john@example.com…"
-                    className="bg-canvas text-ink text-xs px-3 py-2 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary transition-colors"
-                  />
+              ) : !user.emailVerified ? (
+                <div className="bg-surface-1 border border-hairline rounded-md p-6 flex flex-col gap-5 items-center text-center justify-center min-h-[300px] animate-in fade-in duration-300">
+                  <div className="w-12 h-12 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center text-destructive">
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+                  <div className="flex flex-col gap-1.5 max-w-xs">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-destructive">Email Verification Required</h4>
+                    <p className="text-[11px] text-ink-subtle leading-normal">
+                      Please verify your email address (<strong>{user.email}</strong>) to proceed to checkout and place your order.
+                    </p>
+                  </div>
+                  <ResendCartButton />
                 </div>
-
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="phone" className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">Phone Number *</label>
-                  <input
-                    type="tel"
-                    id="phone"
-                    name="phone"
-                    required
-                    autoComplete="tel"
-                    placeholder="e.g. +1 (555) 000-0000…"
-                    className="bg-canvas text-ink text-xs px-3 py-2 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary transition-colors"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="address" className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">Shipping Address *</label>
-                  <textarea
-                    id="address"
-                    name="address"
-                    required
-                    rows={3}
-                    placeholder="e.g. Street details, Apt number, City, State, ZIP code…"
-                    className="bg-canvas text-ink text-xs px-3 py-2 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary resize-none transition-colors"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isPending}
-                  className="mt-2 w-full py-3.5 rounded-sm bg-primary hover:bg-primary-hover border border-primary-focus text-primary-foreground text-xs font-semibold transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+              ) : (
+                <form
+                  onSubmit={handleCheckout}
+                  className="bg-surface-1 border border-hairline rounded-md p-6 flex flex-col gap-4 relative"
                 >
-                  {isPending ? (
-                    <>
-                      <span className="animate-spin rounded-full h-4 w-4 border-2 border-primary-foreground border-t-transparent" />
-                      Processing Checkout…
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard className="w-4 h-4" />
-                      Verify and Place Order (${cartTotal.toLocaleString()})
-                    </>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-primary">Shipping & Checkout</h3>
+                  
+                  {error && (
+                    <div className="p-3 bg-red-950/30 border border-red-900/40 text-red-400 text-xs rounded-sm">
+                      {error}
+                    </div>
                   )}
-                </button>
-              </form>
+
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="name" className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">Full Name *</label>
+                    <input
+                      type="text"
+                      id="name"
+                      name="name"
+                      required
+                      autoComplete="name"
+                      defaultValue={user?.name || ""}
+                      placeholder="e.g. John Doe…"
+                      className="bg-canvas text-ink text-xs px-3 py-2 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary transition-colors"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="email" className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">Email Address *</label>
+                    <input
+                      type="email"
+                      id="email"
+                      name="email"
+                      required
+                      autoComplete="email"
+                      spellCheck={false}
+                      defaultValue={user?.email || ""}
+                      placeholder="e.g. john@example.com…"
+                      className="bg-canvas text-ink text-xs px-3 py-2 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary transition-colors"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="phone" className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">Phone Number *</label>
+                    <input
+                      type="tel"
+                      id="phone"
+                      name="phone"
+                      required
+                      autoComplete="tel"
+                      placeholder="e.g. 9876543210"
+                      pattern="[6-9][0-9]{9}"
+                      maxLength={10}
+                      onInput={(e) => {
+                        e.currentTarget.value = e.currentTarget.value.replace(/\D/g, "");
+                      }}
+                      title="Please enter a valid 10-digit Indian mobile number."
+                      className="bg-canvas text-ink text-xs px-3 py-2 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary transition-colors"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="address" className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">Shipping Address *</label>
+                    <textarea
+                      id="address"
+                      name="address"
+                      required
+                      rows={3}
+                      placeholder="e.g. Street details, Apt number, City, State, ZIP code…"
+                      className="bg-canvas text-ink text-xs px-3 py-2 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary resize-none transition-colors"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isPending}
+                    className="mt-2 w-full py-3.5 rounded-sm bg-primary hover:bg-primary-hover border border-primary-focus text-primary-foreground text-xs font-semibold transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isPending ? (
+                      <>
+                        <span className="animate-spin rounded-full h-4 w-4 border-2 border-primary-foreground border-t-transparent" />
+                        Processing Checkout…
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="w-4 h-4" />
+                        Verify and Place Order (₹{cartTotal.toLocaleString()})
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         )}
       </main>
 
       <Footer />
+    </div>
+  );
+}
+
+function ResendCartButton() {
+  const [isPending, startTransition] = useTransition();
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleResend = () => {
+    setError(null);
+    startTransition(async () => {
+      const res = await resendVerificationAction();
+      if (res.success) {
+        setSent(true);
+        setTimeout(() => setSent(false), 5000);
+      } else {
+        setError(res.error || "Failed to resend.");
+      }
+    });
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-2 w-full mt-2">
+      <button
+        onClick={handleResend}
+        disabled={isPending || sent}
+        className="w-full py-2.5 rounded-sm bg-primary hover:bg-primary-hover border border-primary-focus text-primary-foreground text-xs font-semibold transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+      >
+        {isPending ? "Resending..." : sent ? "Verification Link Sent!" : "Resend Verification Email"}
+      </button>
+      {error && <p className="text-[10px] text-destructive">{error}</p>}
     </div>
   );
 }

@@ -16,26 +16,38 @@ enum Role {
 enum PaintingStatus {
   AVAILABLE
   SOLD
+  RESERVED
 }
 
 enum CommissionStatus {
   PENDING
+  QUOTE_SENT
   APPROVED
   IN_PROGRESS
-  COMPLETED
-  DECLINED
+  READY_FOR_SHIPPING
+  SHIPPED
+  DELIVERED
+  REJECTED
 }
 
 model User {
-  id           String              @id @default(cuid())
-  name         String
-  email        String              @unique
-  passwordHash String
-  role         Role                @default(USER)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  orders       Order[]
-  commissions  CommissionRequest[]
+  id                       String              @id @default(cuid())
+  name                     String
+  email                    String              @unique
+  passwordHash             String
+  role                     Role                @default(USER)
+  emailVerified            Boolean             @default(false)
+  verificationToken        String?             @unique
+  verificationTokenExpires DateTime?
+  phone                    String?
+  profilePicture           String?
+  savedAddresses           String[]            @default([])
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  orders                   Order[]
+  commissions              CommissionRequest[]
+  reviews                  Review[]
+  wishlist                 WishlistItem[]
 }
 
 model Painting {
@@ -43,6 +55,7 @@ model Painting {
   title       String
   description String
   imageUrl    String
+  images      String[]       @default([])
   price       Float
   width       Float          // in inches
   height      Float          // in inches
@@ -55,23 +68,28 @@ model Painting {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   orderItems  OrderItem[]
+  reviews     Review[]
+  wishlist    WishlistItem[]
 }
 
 model Order {
-  id              String      @id @default(cuid())
+  id              String               @id @default(cuid())
   userId          String?
-  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user            User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
   customerName    String
   customerEmail   String
   customerPhone   String
   shippingAddress String
   totalAmount     Float
-  paymentStatus   String      @default("PENDING") // PENDING, PAID, FAILED
-  paymentId       String?     // Razorpay Payment ID or Transaction ID
-  status          String      @default("PENDING") // PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED
+  paymentStatus   String               @default("PENDING") // PENDING, PAID, FAILED
+  paymentId       String?              // Razorpay Payment ID or Transaction ID
+  status          String               @default("PENDING") // PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED
+  courierName     String?
+  trackingNumber  String?
   items           OrderItem[]
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  timeline        OrderTimelineEvent[]
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 }
 
 model OrderItem {
@@ -96,9 +114,62 @@ model CommissionRequest {
   width            Float
   height           Float
   budget           Float
+  quoteAmount      Float?
+  progress         Int?             @default(0)
   referenceUrl     String?          // URL to reference image
   status           CommissionStatus @default(PENDING)
   notes            String?          // Admin notes or response
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
+}
+
+model OrderTimelineEvent {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    String
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+model Review {
+  id         String    @id @default(cuid())
+  paintingId String?
+  painting   Painting? @relation(fields: [paintingId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  authorName String
+  authorEmail String
+  rating     Int
+  comment    String
+  status     String    @default("PENDING") // PENDING, APPROVED, SPAM
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model StoreSettings {
+  id                    String   @id @default("default")
+  storeName             String   @default("Mansi's Palette")
+  storeLogo             String?
+  contactEmail          String   @default("mansipalette@gmail.com")
+  contactPhone          String   @default("+91 98765 43210")
+  contactAddress        String   @default("Mumbai, India")
+  instagramUrl          String   @default("https://instagram.com/mansispalette")
+  facebookUrl           String   @default("https://facebook.com/mansispalette")
+  pinterestUrl          String   @default("https://pinterest.com/mansispalette")
+  baseShippingCost      Float    @default(150.0)
+  freeShippingThreshold Float    @default(5000.0)
+  estimatedDeliveryDays Int      @default(7)
+  notifyOnNewOrder      Boolean  @default(true)
+  notifyOnNewCommission Boolean  @default(true)
+}
+
+model WishlistItem {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paintingId String
+  painting   Painting @relation(fields: [paintingId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  @@unique([userId, paintingId])
 }

@@ -1,24 +1,41 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAuth, useCart } from "./providers";
-import { ShoppingBag, Menu, X, Sparkles, User, Shield } from "lucide-react";
+import { useAuth, useCart, useWishlist } from "./providers";
+import { ShoppingBag, Menu, X, Sparkles, User, Shield, Heart } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { resendVerificationAction } from "@/app/auth/actions";
 
 export function Navbar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { cartCount } = useCart();
+  const { wishlistCount } = useWishlist();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   const links = [
     { href: "/gallery", label: "Gallery" },
     { href: "/commissions", label: "Commissions" },
+    ...(user ? [
+      { href: "/gallery/wishlist", label: "Wishlist" },
+      { href: "/user/orders", label: "My Orders" },
+      { href: "/user/profile", label: "Profile" },
+    ] : []),
   ];
 
   return (
-    <header className="sticky top-0 z-40 w-full h-14 bg-canvas/80 backdrop-blur-md border-b border-hairline transition-colors">
+    <>
+      <header className="sticky top-0 z-40 w-full h-14 bg-canvas/80 backdrop-blur-md border-b border-hairline transition-colors">
       <div className="max-w-7xl mx-auto h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between">
         {/* Left: Brand Logo */}
         <div className="flex items-center">
@@ -63,6 +80,22 @@ export function Navbar() {
 
         {/* Right: Actions */}
         <div className="hidden md:flex items-center gap-4">
+          {/* Wishlist Heart Icon */}
+          {user && (
+            <Link
+              href="/gallery/wishlist"
+              className="relative p-2 text-ink-subtle hover:text-ink transition-colors rounded-sm hover:bg-surface-1"
+              aria-label="Wishlist"
+            >
+              <Heart className="w-5 h-5" />
+              {wishlistCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-600 text-white text-[10px] font-bold rounded-full border border-canvas">
+                  {wishlistCount}
+                </span>
+              )}
+            </Link>
+          )}
+
           {/* Cart Icon */}
           <Link
             href="/cart"
@@ -80,12 +113,12 @@ export function Navbar() {
           {/* User Section */}
           {user ? (
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 text-sm text-ink-muted">
+              <Link href="/user/profile" className="flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink transition-colors">
                 <User className="w-4 h-4 text-ink-subtle" />
                 <span className="max-w-[100px] truncate">{user.name.split(" ")[0]}</span>
-              </div>
+              </Link>
               <button
-                onClick={logout}
+                onClick={() => setIsConfirmOpen(true)}
                 className="text-xs font-medium px-3 py-1.5 rounded-sm bg-surface-1 hover:bg-surface-2 border border-hairline text-ink transition-colors"
               >
                 Sign Out
@@ -111,6 +144,23 @@ export function Navbar() {
 
         {/* Hamburger (Mobile) */}
         <div className="flex items-center gap-4 md:hidden">
+          {/* Wishlist Mobile */}
+          {user && (
+            <Link
+              href="/gallery/wishlist"
+              className="relative p-2 text-ink-subtle hover:text-ink transition-colors rounded-sm"
+              aria-label="Wishlist"
+            >
+              <Heart className="w-5 h-5" />
+              {wishlistCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-600 text-white text-[10px] font-bold rounded-full border border-canvas">
+                  {wishlistCount}
+                </span>
+              )}
+            </Link>
+          )}
+
+          {/* Cart Mobile */}
           <Link
             href="/cart"
             className="relative p-2 text-ink-subtle hover:text-ink transition-colors rounded-sm"
@@ -160,14 +210,18 @@ export function Navbar() {
           <hr className="border-hairline my-1" />
           {user ? (
             <div className="flex flex-col gap-2 pt-2">
-              <div className="text-xs text-ink-subtle flex items-center gap-1">
+              <Link
+                href="/user/profile"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-xs text-ink-subtle flex items-center gap-1 hover:text-ink transition-colors py-1"
+              >
                 <User className="w-4 h-4" />
                 <span>Signed in as {user.name}</span>
-              </div>
+              </Link>
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  logout();
+                  setIsConfirmOpen(true);
                 }}
                 className="w-full text-center text-xs font-medium py-2 rounded-sm bg-surface-2 hover:bg-surface-3 border border-hairline text-ink"
               >
@@ -194,8 +248,41 @@ export function Navbar() {
           )}
         </div>
       )}
+      <Dialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Are you sure you want to sign out?</DialogTitle>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              onClick={() => {
+                setIsConfirmOpen(false);
+                logout();
+              }}
+            >
+              Sign Out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </header>
-  );
+    {user && !user.emailVerified && (
+      <div className="bg-destructive/10 border-b border-destructive/20 text-ink text-[11px] py-2 px-4 text-center flex items-center justify-center gap-1.5 animate-in slide-in-from-top duration-300">
+        <span>
+          Please verify your email address (<strong>{user.email}</strong>) to enable cart purchases, orders, and commissions.
+        </span>
+        <ResendButton />
+      </div>
+    )}
+  </>
+);
 }
 
 export function Footer() {
@@ -234,5 +321,32 @@ export function Footer() {
         </div>
       </div>
     </footer>
+  );
+}
+
+function ResendButton() {
+  const [isPending, startTransition] = useTransition();
+  const [sent, setSent] = useState(false);
+
+  const handleResend = () => {
+    startTransition(async () => {
+      const res = await resendVerificationAction();
+      if (res.success) {
+        setSent(true);
+        setTimeout(() => setSent(false), 5000);
+      } else {
+        alert(res.error || "Failed to resend verification email.");
+      }
+    });
+  };
+
+  return (
+    <button
+      onClick={handleResend}
+      disabled={isPending || sent}
+      className="underline hover:text-primary transition-colors font-medium ml-1 disabled:opacity-60 disabled:no-underline cursor-pointer"
+    >
+      {isPending ? "Resending..." : sent ? "Sent!" : "Resend email"}
+    </button>
   );
 }

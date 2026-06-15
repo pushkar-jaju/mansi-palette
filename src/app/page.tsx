@@ -136,7 +136,7 @@ export default async function Home() {
                       </p>
                     </div>
                     <span className="text-xs font-semibold text-ink text-right">
-                      ${painting.price.toLocaleString()}
+                      ₹{painting.price.toLocaleString()}
                     </span>
                   </div>
                 </Link>
@@ -164,7 +164,7 @@ export default async function Home() {
             &ldquo;Every canvas starts as an unspoken feeling. My palette is a medium to capture fleeting moments of beauty—whether it&apos;s the gold reflections in a coastal wave or the deep calm of a misty morning. Art should not just decorate a wall; it should anchor a room and evoke a conversation.&rdquo;
           </blockquote>
           <cite className="block text-xs font-semibold text-ink uppercase tracking-wider not-italic">
-            — Mansi Sharma
+            — Mansi Jaju
           </cite>
         </div>
       </section>

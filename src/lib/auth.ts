@@ -62,7 +62,26 @@ export async function getSession() {
   const cookieStore = await cookies();
   const cookie = cookieStore.get(COOKIE_NAME);
   if (!cookie) return null;
-  return decryptSession(cookie.value);
+  const payload = decryptSession(cookie.value);
+  if (!payload) return null;
+
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const user = await prisma.user.findUnique({
+      where: { id: payload.id },
+      select: { id: true, name: true, email: true, role: true, emailVerified: true },
+    });
+    if (!user) return null;
+    return user;
+  } catch (error) {
+    return {
+      id: payload.id,
+      name: payload.name,
+      email: payload.email,
+      role: payload.role,
+      emailVerified: payload.emailVerified || false,
+    };
+  }
 }
 
 export async function setSession(payload: any) {

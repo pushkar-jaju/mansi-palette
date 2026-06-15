@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { getFriendlyErrorMessage } from "@/lib/errors";
 
 export async function createOrder(data: {
   customerName: string;
@@ -13,6 +14,24 @@ export async function createOrder(data: {
 }) {
   try {
     const session = await getSession();
+
+    if (!session) {
+      return { success: false, error: "Authentication required to place orders." };
+    }
+
+    const dbUser = await prisma.user.findUnique({
+      where: { id: session.id },
+      select: { emailVerified: true },
+    });
+
+    if (!dbUser || !dbUser.emailVerified) {
+      return { success: false, error: "Please verify your email address to place orders." };
+    }
+
+    const phoneRegex = /^[6-9]\d{9}$/;
+    if (!phoneRegex.test(data.customerPhone)) {
+      return { success: false, error: "Please enter a valid 10-digit Indian mobile number." };
+    }
 
     if (!data.customerName || !data.customerEmail || !data.shippingAddress || data.paintingIds.length === 0) {
       return { success: false, error: "Please fill out all required details." };
@@ -73,6 +92,6 @@ export async function createOrder(data: {
     return { success: true, orderId: result.id };
   } catch (error: any) {
     console.error("Order creation failed:", error);
-    return { success: false, error: error.message || "An error occurred during checkout." };
+    return { success: false, error: getFriendlyErrorMessage(error, "An error occurred during checkout.") };
   }
 }

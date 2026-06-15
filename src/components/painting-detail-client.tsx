@@ -3,8 +3,10 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useCart, CartItem } from "./providers";
+import { useCart, useAuth, CartItem } from "./providers";
+import { useRouter } from "next/navigation";
 import { Sparkles, ShoppingBag, Eye, X, Check, ArrowLeft, Ruler } from "lucide-react";
+import { WishlistHeartButton } from "@/components/wishlist-heart-button";
 
 interface PaintingDetailClientProps {
   painting: {
@@ -19,13 +21,16 @@ interface PaintingDetailClientProps {
     canvasType: string;
     frameOption: string;
     category: string;
-    status: "AVAILABLE" | "SOLD";
+    status: "AVAILABLE" | "SOLD" | "RESERVED";
     isFeatured: boolean;
   };
 }
 
 export function PaintingDetailClient({ painting }: PaintingDetailClientProps) {
   const { addToCart, isInCart } = useCart();
+  const { user } = useAuth();
+  const router = useRouter();
+  
   const [viewInRoomOpen, setViewInRoomOpen] = useState(false);
   const [wallColor, setWallColor] = useState("#1e2022"); // Default Slate Dark
 
@@ -37,6 +42,15 @@ export function PaintingDetailClient({ painting }: PaintingDetailClientProps) {
   ];
 
   const handleAddToCart = () => {
+    if (!user) {
+      router.push(`/auth/login?redirect=/gallery/${painting.id}`);
+      return;
+    }
+
+    if (!user.emailVerified) {
+      return;
+    }
+
     const cartItem: CartItem = {
       id: painting.id,
       title: painting.title,
@@ -113,7 +127,7 @@ export function PaintingDetailClient({ painting }: PaintingDetailClientProps) {
               {painting.title}
             </h1>
             <p className="text-xl font-medium text-ink">
-              ${painting.price.toLocaleString()}
+              ₹{painting.price.toLocaleString()}
             </p>
           </div>
 
@@ -153,34 +167,53 @@ export function PaintingDetailClient({ painting }: PaintingDetailClientProps) {
           {/* Cart Buttons */}
           <div className="flex flex-col gap-3">
             {isAvailable ? (
-              <button
-                onClick={handleAddToCart}
-                disabled={isAlreadyInCart}
-                className={`w-full py-3.5 rounded-sm text-xs font-semibold flex items-center justify-center gap-2 border transition-all ${
-                  isAlreadyInCart
-                    ? "bg-surface-2 border-hairline text-ink-subtle cursor-default"
-                    : "bg-primary border-primary hover:bg-primary-hover text-primary-foreground active:scale-[0.98]"
-                }`}
-              >
-                {isAlreadyInCart ? (
-                  <>
-                    <Check className="w-4 h-4 text-primary" />
-                    Already in Cart
-                  </>
-                ) : (
-                  <>
-                    <ShoppingBag className="w-4 h-4" />
-                    Purchase Original Artwork
-                  </>
+              <>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleAddToCart}
+                    disabled={isAlreadyInCart || !!(user && !user.emailVerified)}
+                    className={`flex-1 py-3.5 rounded-sm text-xs font-semibold flex items-center justify-center gap-2 border transition-all ${
+                      isAlreadyInCart
+                        ? "bg-surface-2 border-hairline text-ink-subtle cursor-default"
+                        : !!(user && !user.emailVerified)
+                          ? "bg-surface-2 border-hairline text-ink-tertiary cursor-not-allowed"
+                          : "bg-primary border-primary hover:bg-primary-hover text-primary-foreground active:scale-[0.98]"
+                    }`}
+                  >
+                    {isAlreadyInCart ? (
+                      <>
+                        <Check className="w-4 h-4 text-primary" />
+                        Already in Cart
+                      </>
+                    ) : !!(user && !user.emailVerified) ? (
+                      <>
+                        Email Verification Required
+                      </>
+                    ) : (
+                      <>
+                        <ShoppingBag className="w-4 h-4" />
+                        Purchase Original Artwork
+                      </>
+                    )}
+                  </button>
+                  <WishlistHeartButton paintingId={painting.id} className="relative bg-surface-1 border-hairline hover:bg-surface-2" size={20} />
+                </div>
+                {user && !user.emailVerified && (
+                  <p className="text-[10px] text-destructive leading-normal text-center mt-1">
+                    Please verify your email address to add items to the cart.
+                  </p>
                 )}
-              </button>
+              </>
             ) : (
-              <button
-                disabled
-                className="w-full py-3.5 rounded-sm bg-surface-2 border border-hairline text-xs font-semibold text-ink-tertiary cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                Sold Out (Original Artwork)
-              </button>
+              <div className="flex gap-3">
+                <button
+                  disabled
+                  className="flex-1 py-3.5 rounded-sm bg-surface-2 border border-hairline text-xs font-semibold text-ink-tertiary cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  Sold Out (Original Artwork)
+                </button>
+                <WishlistHeartButton paintingId={painting.id} className="relative bg-surface-1 border-hairline hover:bg-surface-2" size={20} />
+              </div>
             )}
 
             <p className="text-[10px] text-ink-subtle leading-normal text-center mt-1">
