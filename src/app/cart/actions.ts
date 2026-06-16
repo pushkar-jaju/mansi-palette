@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { getFriendlyErrorMessage } from "@/lib/errors";
+import { parseAddressString, validatePincode, validatePhone } from "@/lib/address";
 
 export async function createOrder(data: {
   customerName: string;
@@ -28,9 +29,13 @@ export async function createOrder(data: {
       return { success: false, error: "Please verify your email address to place orders." };
     }
 
-    const phoneRegex = /^[6-9]\d{9}$/;
-    if (!phoneRegex.test(data.customerPhone)) {
+    if (!validatePhone(data.customerPhone)) {
       return { success: false, error: "Please enter a valid 10-digit Indian mobile number." };
+    }
+
+    const parsedAddr = parseAddressString(data.shippingAddress);
+    if (!parsedAddr.pincode || !validatePincode(parsedAddr.pincode)) {
+      return { success: false, error: "A valid 6-digit Indian PIN code is required in the shipping address." };
     }
 
     if (!data.customerName || !data.customerEmail || !data.shippingAddress || data.paintingIds.length === 0) {
@@ -63,9 +68,9 @@ export async function createOrder(data: {
           customerPhone: data.customerPhone || "",
           shippingAddress: data.shippingAddress,
           totalAmount: data.totalAmount,
-          paymentStatus: "PAID", // Simulated payment success
-          paymentId: `pay_sim_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          status: "PROCESSING",
+          paymentStatus: "PENDING",
+          paymentId: null,
+          status: "PENDING_APPROVAL",
         },
       });
 
@@ -86,10 +91,27 @@ export async function createOrder(data: {
         data: { status: "SOLD" },
       });
 
-      return order;
+      // Fetch the full order with items and paintings to return
+      const fullOrder = await tx.order.findUnique({
+        where: { id: order.id },
+        include: {
+          items: {
+            include: {
+              painting: true,
+            },
+          },
+        },
+      });
+
+      return fullOrder;
     });
 
-    return { success: true, orderId: result.id };
+    const settings = await prisma.storeSettings.findUnique({
+      where: { id: "default" },
+    });
+    const adminPhone = settings?.contactPhone || "+91 98765 43210";
+
+    return { success: true, order: result, adminPhone };
   } catch (error: any) {
     console.error("Order creation failed:", error);
     return { success: false, error: getFriendlyErrorMessage(error, "An error occurred during checkout.") };

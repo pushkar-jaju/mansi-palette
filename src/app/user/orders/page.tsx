@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useAuth } from "@/components/providers";
 import { Navbar, Footer } from "@/components/navigation";
 import { getMyOrdersAction } from "@/app/actions";
+import { parseAddressString } from "@/lib/address";
 import { 
   ShoppingBag, Calendar, MapPin, IndianRupee, Truck, 
   Clock, ChevronDown, ChevronUp, Loader2, Heart, ArrowLeft, ShieldAlert 
@@ -70,15 +71,22 @@ export default function MyOrdersPage() {
   const getStatusStyle = (status: string) => {
     switch (status) {
       case "DELIVERED":
-        return "bg-green-950/20 border-green-900/40 text-green-400";
+        return "bg-emerald-950/20 border-emerald-900/40 text-emerald-400";
+      case "REJECTED":
       case "CANCELLED":
         return "bg-red-950/20 border-red-900/40 text-red-400";
       case "SHIPPED":
-        return "bg-blue-950/20 border-blue-900/40 text-blue-400";
-      case "OUT_FOR_DELIVERY":
-        return "bg-purple-950/20 border-purple-900/40 text-purple-400";
-      case "PROCESSING":
+        return "bg-teal-950/20 border-teal-900/40 text-teal-400";
+      case "PENDING_APPROVAL":
         return "bg-amber-950/20 border-amber-900/40 text-amber-500";
+      case "ACCEPTED":
+        return "bg-cyan-950/20 border-cyan-900/40 text-cyan-400";
+      case "PAYMENT_PENDING":
+        return "bg-orange-950/20 border-orange-900/40 text-orange-400";
+      case "PAYMENT_RECEIVED":
+        return "bg-green-950/20 border-green-900/40 text-green-400";
+      case "PROCESSING":
+        return "bg-indigo-950/20 border-indigo-900/40 text-indigo-400";
       default:
         return "bg-neutral-950 border-hairline text-ink-muted";
     }
@@ -86,10 +94,12 @@ export default function MyOrdersPage() {
 
   // Status milestones helper
   const statusMilestones = [
-    { key: "PENDING", label: "Order Placed" },
+    { key: "PENDING_APPROVAL", label: "Pending Approval" },
+    { key: "ACCEPTED", label: "Order Accepted" },
+    { key: "PAYMENT_PENDING", label: "Payment Pending" },
+    { key: "PAYMENT_RECEIVED", label: "Payment Received" },
     { key: "PROCESSING", label: "Processing" },
     { key: "SHIPPED", label: "Shipped" },
-    { key: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
     { key: "DELIVERED", label: "Delivered" },
   ];
 
@@ -140,7 +150,7 @@ export default function MyOrdersPage() {
             {orders.map((order) => {
               const isExpanded = expandedOrderId === order.id;
               const activeIndex = statusMilestones.findIndex(m => m.key === order.status);
-              const isCancelled = order.status === "CANCELLED";
+              const isCancelled = order.status === "CANCELLED" || order.status === "REJECTED";
 
               return (
                 <div
@@ -222,7 +232,12 @@ export default function MyOrdersPage() {
                         {isCancelled ? (
                           <div className="p-3 bg-red-950/20 border border-red-900/40 text-red-400 text-xs rounded-sm flex items-center gap-2">
                             <ShieldAlert className="w-4 h-4 flex-shrink-0" />
-                            <span>This order has been Cancelled. If you have questions about refund parameters, please contact studio support.</span>
+                            <span>
+                              {order.status === "REJECTED"
+                                ? "This order has been Rejected. Please contact studio support for details."
+                                : "This order has been Cancelled. If you have questions about refund parameters, please contact studio support."
+                              }
+                            </span>
                           </div>
                         ) : (
                           /* Visual Tracker Steps */
@@ -263,13 +278,39 @@ export default function MyOrdersPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-hairline pt-5 text-xs">
                         
                         {/* Shipping and logistics details */}
-                        <div className="flex flex-col gap-2">
-                          <span className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">Delivery Address</span>
-                          <div className="bg-surface-1 border border-hairline rounded-sm p-3.5 text-ink-muted flex flex-col gap-1 min-h-[90px]">
-                            <p className="font-semibold text-ink">{order.customerName}</p>
-                            <p className="leading-relaxed mt-0.5 whitespace-pre-wrap">{order.shippingAddress}</p>
-                          </div>
-                        </div>
+                        {(() => {
+                          const parsedAddr = parseAddressString(order.shippingAddress);
+                          return (
+                            <div className="flex flex-col gap-2">
+                              <span className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">Delivery Destination</span>
+                              <div className="bg-surface-1 border border-hairline rounded-sm p-3.5 text-ink-muted flex flex-col gap-1.5 min-h-[90px] text-xs">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-semibold text-ink">{parsedAddr.name || order.customerName}</span>
+                                  {parsedAddr.type && (
+                                    <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold bg-primary/20 text-primary uppercase border border-primary/20 font-sans">
+                                      {parsedAddr.type}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-ink-subtle font-mono">
+                                  Phone: {parsedAddr.phone || order.customerPhone || "N/A"}
+                                </span>
+                                <hr className="border-hairline/60 my-0.5" />
+                                {parsedAddr.type || parsedAddr.name ? (
+                                  <p className="leading-relaxed whitespace-pre-wrap text-ink-muted mt-0.5 font-mono">
+                                    {parsedAddr.addressLine}
+                                    {parsedAddr.cityState && `\n${parsedAddr.cityState}`}
+                                    {parsedAddr.pincode && `\nPin: ${parsedAddr.pincode}`}
+                                  </p>
+                                ) : (
+                                  <p className="leading-relaxed whitespace-pre-wrap text-ink-muted mt-0.5">
+                                    {order.shippingAddress}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         {/* Payment / Tracking */}
                         <div className="flex flex-col gap-2">
@@ -278,7 +319,7 @@ export default function MyOrdersPage() {
                             <div className="flex justify-between">
                               <span>Payment Status:</span>
                               <strong className={order.paymentStatus === "PAID" ? "text-green-400 font-bold" : "text-amber-500 font-bold"}>
-                                {order.paymentStatus} (Razorpay Simulated)
+                                {order.paymentStatus} {order.paymentStatus === "PAID" ? "(Confirmed)" : "(Pending)"}
                               </strong>
                             </div>
 

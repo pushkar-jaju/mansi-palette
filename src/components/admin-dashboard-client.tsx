@@ -13,11 +13,12 @@ import {
   deleteReview, 
   updateStoreSettings 
 } from "@/app/admin/actions";
+import { parseAddressString } from "@/lib/address";
 import { 
   IndianRupee, ShoppingBag, Layers, Paintbrush, 
   Trash2, Plus, Check, AlertCircle, FileImage, ShieldCheck,
   Users, MessageSquare, LineChart, Settings, Edit, Search, 
-  Filter, Star, X, Truck, Calendar, Clock, ArrowRight, Upload
+  Filter, Star, X, Truck, Calendar, Clock, ArrowRight, Upload, Copy
 } from "lucide-react";
 
 interface AdminDashboardClientProps {
@@ -87,6 +88,26 @@ export function AdminDashboardClient({
 
   const [quoteAmounts, setQuoteAmounts] = useState<{ [id: string]: number }>({});
   const [progressValues, setProgressValues] = useState<{ [id: string]: number }>({});
+
+  const [copiedAddressId, setCopiedAddressId] = useState<string | null>(null);
+
+  const handleCopyAddress = (order: any) => {
+    const parsed = parseAddressString(order.shippingAddress);
+    const cleanName = parsed.name || order.customerName;
+    const cleanPhone = parsed.phone || order.customerPhone || "N/A";
+    const addressBlock = [
+      cleanName,
+      `Phone: ${cleanPhone}`,
+      parsed.addressLine || order.shippingAddress,
+      parsed.cityState,
+      parsed.pincode ? `Pincode: ${parsed.pincode}` : ""
+    ].filter(Boolean).join("\n");
+
+    navigator.clipboard.writeText(addressBlock).then(() => {
+      setCopiedAddressId(order.id);
+      setTimeout(() => setCopiedAddressId(null), 2000);
+    });
+  };
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
@@ -172,29 +193,83 @@ export function AdminDashboardClient({
   // Order Details / Status / Courier action handler
   const handleUpdateOrderDetails = async (orderId: string) => {
     startTransition(async () => {
+      const targetStatus = newOrderStatus || viewingOrder.status;
       const res = await updateOrderStatus(
         orderId, 
-        newOrderStatus || viewingOrder.status, 
+        targetStatus, 
         courierNameInput, 
         trackingNumberInput, 
         timelineNote
       );
       if (res.success) {
         showSuccess("Order details updated successfully.");
-        // Refresh details modal local state
-        const updatedOrder = orders.find(o => o.id === orderId);
-        if (updatedOrder) {
-          setViewingOrder({
-            ...updatedOrder,
-            status: newOrderStatus || updatedOrder.status,
+        
+        const localTimeline = viewingOrder.timeline ? [...viewingOrder.timeline] : [];
+        localTimeline.push({
+          id: `local_evt_${Date.now()}`,
+          orderId,
+          status: targetStatus,
+          note: timelineNote || `Order status updated to ${targetStatus}.`,
+          createdAt: new Date().toISOString()
+        });
+
+        setViewingOrder((prev: any) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            status: targetStatus,
             courierName: courierNameInput,
-            trackingNumber: trackingNumberInput
-          });
-        }
+            trackingNumber: trackingNumberInput,
+            timeline: localTimeline
+          };
+        });
         setNewOrderStatus("");
         setTimelineNote("");
       } else {
         showError(res.error || "Failed to update order details.");
+      }
+    });
+  };
+
+  const handleQuickAction = async (orderId: string, updates: { status?: string; paymentStatus?: string; note?: string }) => {
+    startTransition(async () => {
+      const targetStatus = updates.status || viewingOrder.status;
+      const targetPaymentStatus = updates.paymentStatus || viewingOrder.paymentStatus;
+      
+      const res = await updateOrderStatus(
+        orderId,
+        targetStatus,
+        courierNameInput || viewingOrder.courierName || "",
+        trackingNumberInput || viewingOrder.trackingNumber || "",
+        updates.note || timelineNote,
+        updates.paymentStatus
+      );
+      if (res.success) {
+        showSuccess("Order quick action processed successfully.");
+        
+        const localTimeline = viewingOrder.timeline ? [...viewingOrder.timeline] : [];
+        localTimeline.push({
+          id: `local_evt_${Date.now()}`,
+          orderId,
+          status: targetStatus,
+          note: updates.note || timelineNote || `Order status updated to ${targetStatus}.`,
+          createdAt: new Date().toISOString()
+        });
+
+        setViewingOrder((prev: any) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            status: targetStatus,
+            paymentStatus: targetPaymentStatus,
+            timeline: localTimeline
+          };
+        });
+
+        setNewOrderStatus(targetStatus);
+        setTimelineNote("");
+      } else {
+        showError(res.error || "Failed to process quick action.");
       }
     });
   };
@@ -851,11 +926,14 @@ export function AdminDashboardClient({
                 className="bg-canvas text-ink text-[11px] px-2 py-1.5 rounded-sm border border-hairline focus:outline-none"
               >
                 <option value="All">All Statuses</option>
-                <option value="PENDING">Pending</option>
+                <option value="PENDING_APPROVAL">Pending Approval</option>
+                <option value="ACCEPTED">Accepted</option>
+                <option value="PAYMENT_PENDING">Payment Pending</option>
+                <option value="PAYMENT_RECEIVED">Payment Received</option>
                 <option value="PROCESSING">Processing</option>
                 <option value="SHIPPED">Shipped</option>
-                <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
                 <option value="DELIVERED">Delivered</option>
+                <option value="REJECTED">Rejected</option>
                 <option value="CANCELLED">Cancelled</option>
               </select>
             </div>
@@ -899,10 +977,13 @@ export function AdminDashboardClient({
                       <td className="py-4 text-center">
                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
                           o.status === "DELIVERED" ? "bg-green-950/20 border-green-900/40 text-green-400" :
-                          o.status === "CANCELLED" ? "bg-red-950/20 border-red-900/40 text-red-400" :
+                          o.status === "REJECTED" || o.status === "CANCELLED" ? "bg-red-950/20 border-red-900/40 text-red-400" :
                           o.status === "SHIPPED" ? "bg-blue-950/20 border-blue-900/40 text-blue-400" :
-                          o.status === "OUT_FOR_DELIVERY" ? "bg-purple-950/20 border-purple-900/40 text-purple-400" :
-                          o.status === "PROCESSING" ? "bg-amber-950/20 border-amber-900/40 text-amber-500" :
+                          o.status === "PENDING_APPROVAL" ? "bg-amber-950/20 border-amber-900/40 text-amber-500" :
+                          o.status === "ACCEPTED" ? "bg-cyan-950/20 border-cyan-900/40 text-cyan-400" :
+                          o.status === "PAYMENT_PENDING" ? "bg-orange-950/20 border-orange-900/40 text-orange-400" :
+                          o.status === "PAYMENT_RECEIVED" ? "bg-emerald-950/20 border-emerald-900/40 text-emerald-400" :
+                          o.status === "PROCESSING" ? "bg-purple-950/20 border-purple-900/40 text-purple-400" :
                           "bg-neutral-950 border-hairline text-ink-muted"
                         }`}>
                           {o.status.replace(/_/g, " ")}
@@ -1881,15 +1962,61 @@ export function AdminDashboardClient({
               <div className="md:col-span-7 flex flex-col gap-6">
                 
                 {/* Customer Details */}
-                <div className="flex flex-col gap-2">
-                  <span className="text-[10px] text-primary uppercase font-bold tracking-wider">Customer Details</span>
-                  <div className="bg-canvas border border-hairline p-3.5 rounded-sm text-xs flex flex-col gap-1">
-                    <div><span className="text-ink-subtle font-medium">Name:</span> <strong className="text-ink">{viewingOrder.customerName}</strong></div>
-                    <div><span className="text-ink-subtle font-medium">Email:</span> <span className="text-ink">{viewingOrder.customerEmail}</span></div>
-                    <div><span className="text-ink-subtle font-medium">Phone:</span> <span className="text-ink">{viewingOrder.customerPhone || "N/A"}</span></div>
-                    <div><span className="text-ink-subtle font-medium flex-shrink-0 block mt-1">Shipping Address:</span> <span className="text-ink-muted block mt-0.5 whitespace-pre-wrap">{viewingOrder.shippingAddress}</span></div>
-                  </div>
-                </div>
+                {(() => {
+                  const parsedAddr = parseAddressString(viewingOrder.shippingAddress);
+                  const isCopied = copiedAddressId === viewingOrder.id;
+                  return (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-primary uppercase font-bold tracking-wider">Customer Details</span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyAddress(viewingOrder)}
+                          className="px-2 py-1 bg-surface-2 hover:bg-surface-3 border border-hairline hover:border-hairline-strong rounded-sm text-[10px] text-ink font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Copy shipping address to clipboard"
+                        >
+                          <Copy className="w-3 h-3 text-primary" />
+                          {isCopied ? "Copied!" : "Copy Shipping Address"}
+                        </button>
+                      </div>
+                      
+                      <div className="bg-canvas border border-hairline p-3.5 rounded-sm text-xs flex flex-col gap-1.5 leading-relaxed">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-ink-subtle font-medium">Recipient Name:</span>
+                          <strong className="text-ink">{parsedAddr.name || viewingOrder.customerName}</strong>
+                          {parsedAddr.type && (
+                            <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold bg-primary/20 text-primary uppercase border border-primary/20 font-sans">
+                              {parsedAddr.type}
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-ink-subtle font-medium">Customer Email:</span>
+                          <span className="text-ink font-mono">{viewingOrder.customerEmail}</span>
+                        </div>
+                        <div>
+                          <span className="text-ink-subtle font-medium">Phone Number:</span>
+                          <span className="text-ink font-mono">{parsedAddr.phone || viewingOrder.customerPhone || "N/A"}</span>
+                        </div>
+                        <hr className="border-hairline/60 my-1" />
+                        <div>
+                          <span className="text-ink-subtle font-medium block mb-1">Full Shipping Address:</span>
+                          {parsedAddr.type || parsedAddr.name ? (
+                            <div className="bg-surface-2/20 border border-hairline/40 p-2.5 rounded-sm whitespace-pre-wrap leading-relaxed text-ink-muted text-[11px] font-mono">
+                              {parsedAddr.addressLine}
+                              {parsedAddr.cityState && `\n${parsedAddr.cityState}`}
+                              {parsedAddr.pincode && `\nPin: ${parsedAddr.pincode}`}
+                            </div>
+                          ) : (
+                            <div className="bg-surface-2/20 border border-hairline/40 p-2.5 rounded-sm whitespace-pre-wrap leading-relaxed text-ink-muted text-[11px]">
+                              {viewingOrder.shippingAddress}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Order Items */}
                 <div className="flex flex-col gap-2">
@@ -1909,6 +2036,48 @@ export function AdminDashboardClient({
                         <span className="font-semibold text-ink">₹{item.price.toLocaleString()}</span>
                       </div>
                     ))}
+                  </div>
+                </div>
+
+                {/* Admin Quick Action Controls */}
+                <div className="flex flex-col gap-2 bg-surface-2/20 p-4 border border-hairline rounded-sm">
+                  <span className="text-[10px] text-primary uppercase font-bold tracking-wider">Order Management Controls</span>
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    {viewingOrder.status === "PENDING_APPROVAL" && (
+                      <>
+                        <button
+                          onClick={() => handleQuickAction(viewingOrder.id, { status: "ACCEPTED", note: "Order accepted by admin." })}
+                          disabled={isPending}
+                          className="px-3 py-2 bg-green-950/40 border border-green-900/60 text-green-400 hover:bg-green-900/20 text-xs font-semibold rounded-sm transition-all"
+                        >
+                          Accept Order
+                        </button>
+                        <button
+                          onClick={() => handleQuickAction(viewingOrder.id, { status: "REJECTED", note: "Order rejected by admin." })}
+                          disabled={isPending}
+                          className="px-3 py-2 bg-red-950/40 border border-red-900/60 text-red-400 hover:bg-red-900/20 text-xs font-semibold rounded-sm transition-all"
+                        >
+                          Reject Order
+                        </button>
+                      </>
+                    )}
+                    {viewingOrder.paymentStatus !== "PAID" ? (
+                      <button
+                        onClick={() => handleQuickAction(viewingOrder.id, { status: "PAYMENT_RECEIVED", paymentStatus: "PAID", note: "Payment marked as RECEIVED by admin." })}
+                        disabled={isPending}
+                        className="col-span-2 px-3 py-2 bg-emerald-950/40 border border-emerald-900/60 text-emerald-400 hover:bg-emerald-900/20 text-xs font-semibold rounded-sm transition-all"
+                      >
+                        Mark Payment Received
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleQuickAction(viewingOrder.id, { status: "PAYMENT_PENDING", paymentStatus: "PENDING", note: "Payment marked as PENDING by admin." })}
+                        disabled={isPending}
+                        className="col-span-2 px-3 py-2 bg-orange-950/40 border border-orange-900/60 text-orange-400 hover:bg-orange-900/20 text-xs font-semibold rounded-sm transition-all"
+                      >
+                        Mark Payment Pending
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1958,11 +2127,14 @@ export function AdminDashboardClient({
                         onChange={(e) => setNewOrderStatus(e.target.value)}
                         className="bg-canvas text-ink text-xs px-2 py-1 rounded-sm border border-hairline focus:outline-none"
                       >
-                        <option value="PENDING">Pending</option>
+                        <option value="PENDING_APPROVAL">Pending Approval</option>
+                        <option value="ACCEPTED">Accepted</option>
+                        <option value="PAYMENT_PENDING">Payment Pending</option>
+                        <option value="PAYMENT_RECEIVED">Payment Received</option>
                         <option value="PROCESSING">Processing</option>
                         <option value="SHIPPED">Shipped</option>
-                        <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
                         <option value="DELIVERED">Delivered</option>
+                        <option value="REJECTED">Rejected</option>
                         <option value="CANCELLED">Cancelled</option>
                       </select>
                     </div>

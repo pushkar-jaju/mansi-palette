@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useTransition } from "react";
+import React, { useState, useEffect, useTransition, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth, useWishlist } from "@/components/providers";
 import { Navbar, Footer } from "@/components/navigation";
 import { 
@@ -16,13 +17,18 @@ import {
   Plus, Trash2, Camera, ShoppingBag, Heart, Loader2, Check, AlertCircle 
 } from "lucide-react";
 
-export default function ProfilePage() {
+function ProfilePageContent() {
   const { user, setUser } = useAuth();
   const { wishlistCount } = useWishlist();
   const [profileData, setProfileData] = useState<any>(null);
   const [isPending, startTransition] = useTransition();
   const [addressPending, startAddressTransition] = useTransition();
   
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get("redirect");
+  const isFromCheckout = searchParams.get("addAddress") === "true";
+
   // Feedback alerts
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,8 +101,15 @@ export default function ProfilePage() {
       const res = await saveAddressAction(newAddress.trim());
       if (res.success) {
         setNewAddress("");
-        setSuccess("Address saved to address book.");
+        setSuccess(redirectUrl ? "Address saved! Redirecting to checkout..." : "Address saved to address book.");
         await loadProfile();
+        
+        // Automatically redirect back to checkout if redirected from checkout
+        if (redirectUrl) {
+          setTimeout(() => {
+            router.push(redirectUrl);
+          }, 1500);
+        }
       } else {
         setError(res.error || "Failed to save address.");
       }
@@ -156,6 +169,22 @@ export default function ProfilePage() {
             Manage your credentials, brand preferences, saved shipping destinations, and review stats.
           </p>
         </div>
+
+        {/* Checkout Redirect Notice Banner */}
+        {isFromCheckout && (
+          <div className="p-4 bg-primary/10 border border-primary/20 text-ink text-xs rounded-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-primary flex-shrink-0 animate-pulse" />
+              <span>You need to add a shipping address before completing your order. Please add your address details below.</span>
+            </div>
+            <Link
+              href="/cart"
+              className="text-[10px] uppercase font-bold text-primary hover:underline bg-surface-2 border border-hairline px-3 py-1.5 rounded-sm self-start sm:self-auto text-center font-semibold transition-all hover:bg-surface-3 hover:border-hairline-strong whitespace-nowrap"
+            >
+              Return to Checkout
+            </Link>
+          </div>
+        )}
 
         {/* Global Feedback */}
         {success && (
@@ -275,7 +304,7 @@ export default function ProfilePage() {
               </form>
 
               {/* Address Book Manager */}
-              <div className="bg-surface-1 border border-hairline rounded-md p-6 flex flex-col gap-4">
+              <div id="address-book" className="bg-surface-1 border border-hairline rounded-md p-6 flex flex-col gap-4">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5 border-b border-hairline pb-4">
                   <MapPin className="w-4 h-4" />
                   Address Book ({profileData.savedAddresses?.length || 0})
@@ -312,6 +341,7 @@ export default function ProfilePage() {
                       value={newAddress}
                       onChange={(e) => setNewAddress(e.target.value)}
                       className="flex-1 bg-canvas border border-hairline text-ink text-xs px-2.5 py-2 rounded-sm focus:border-primary focus:outline-none resize-none transition-colors"
+                      autoFocus={isFromCheckout}
                     />
                     <button
                       type="submit"
@@ -376,5 +406,22 @@ export default function ProfilePage() {
 
       <Footer />
     </div>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col min-h-screen bg-canvas text-ink animate-pulse">
+        <Navbar />
+        <main className="flex-1 flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto gap-4 text-xs text-ink-subtle uppercase">
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+          <span>Retrieving profile logs…</span>
+        </main>
+        <Footer />
+      </div>
+    }>
+      <ProfilePageContent />
+    </Suspense>
   );
 }

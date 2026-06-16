@@ -83,8 +83,9 @@ model Order {
   totalAmount     Float
   paymentStatus   String               @default("PENDING") // PENDING, PAID, FAILED
   paymentId       String?              // Razorpay Payment ID or Transaction ID
-  status          String               @default("PENDING") // PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED
+  status          String               @default("PENDING_APPROVAL") // PENDING_APPROVAL, ACCEPTED, PAYMENT_PENDING, PAYMENT_RECEIVED, PROCESSING, SHIPPED, DELIVERED, REJECTED
   courierName     String?
+
   trackingNumber  String?
   items           OrderItem[]
   timeline        OrderTimelineEvent[]

@@ -205,7 +205,8 @@ export async function updateOrderStatus(
   status: string,
   courierName?: string,
   trackingNumber?: string,
-  note?: string
+  note?: string,
+  paymentStatus?: string
 ) {
   try {
     await verifyAdmin();
@@ -222,6 +223,7 @@ export async function updateOrderStatus(
     const updateData: any = { status };
     if (courierName !== undefined) updateData.courierName = courierName;
     if (trackingNumber !== undefined) updateData.trackingNumber = trackingNumber;
+    if (paymentStatus !== undefined) updateData.paymentStatus = paymentStatus;
 
     await prisma.order.update({
       where: { id: orderId },

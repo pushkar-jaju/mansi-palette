@@ -55,7 +55,7 @@ export default async function AdminPage() {
     }),
     prisma.order.count(),
     prisma.order.count({
-      where: { status: "PENDING" },
+      where: { status: "PENDING_APPROVAL" },
     }),
     prisma.commissionRequest.count(),
     prisma.user.count({
