@@ -29,7 +29,9 @@ export async function sendVerificationEmail(email: string, token: string) {
         subject: "Verify your email address - Mansi's Palette",
         html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #3f3a36; background-color: #2b2622; color: #f7f5f0; border-radius: 4px;">
-            <h2 style="font-weight: 600; color: #f7f5f0; margin-bottom: 20px; border-bottom: 1px solid #3f3a36; padding-bottom: 10px;">Mansi's Palette</h2>
+            <div style="margin-bottom: 20px; border-bottom: 1px solid #3f3a36; padding-bottom: 15px; text-align: center;">
+              <img src="${baseUrl}/logo-navbar.png" alt="Mansi's Palette" style="height: 32px; display: block; margin: 0 auto;" />
+            </div>
             <p style="font-size: 14px; line-height: 1.5; color: #dad2c1;">Hello,</p>
             <p style="font-size: 14px; line-height: 1.5; color: #dad2c1;">Thank you for registering at Mansi's Palette. To complete your account registration and activate your permissions to place orders, add items to the cart, or request custom painting commissions, please verify your email address by clicking the button below:</p>
             

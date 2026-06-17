@@ -6,6 +6,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Mansi's Palette | Premium Fine Art & Custom Commissions",
   description: "Explore exquisite hand-painted fine art, landscapes, florals, and abstracts by Mansi. Request custom painting commissions and buy premium original canvases.",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/logo-icon.png",
+  },
 };
 
 export default async function RootLayout({

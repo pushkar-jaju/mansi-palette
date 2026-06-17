@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useActionState, useEffect, useState, Suspense } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { loginAction } from "@/app/auth/actions";
@@ -58,9 +59,14 @@ function LoginForm() {
       <div className="w-full max-w-[420px] flex flex-col gap-6">
         {/* Logo Head */}
         <div className="flex flex-col items-center text-center gap-2">
-          <span className="flex items-center justify-center w-8 h-8 rounded-sm bg-primary border border-hairline animate-none">
-            <Sparkles className="w-4.5 h-4.5 text-primary-foreground" aria-hidden="true" />
-          </span>
+          <Image
+            src="/logo-full.png"
+            alt="Mansi's Palette Logo"
+            width={80}
+            height={80}
+            className="object-contain mb-1"
+            priority
+          />
           <h1 className="text-xl font-semibold tracking-tight">Welcome back</h1>
           <p className="text-[11px] text-ink-subtle">
             Sign in to manage requests, commissions, and purchases.

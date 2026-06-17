@@ -39,13 +39,8 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between">
         {/* Left: Brand Logo */}
         <div className="flex items-center">
-          <Link href="/" className="flex items-center gap-2 text-ink font-semibold tracking-tight text-lg">
-            <span className="flex items-center justify-center w-7 h-7 rounded-sm bg-primary border border-hairline">
-              <Sparkles className="w-4 h-4 text-primary-foreground" aria-hidden="true" />
-            </span>
-            <span>
-              Mansi's <span className="text-primary font-semibold">Palette</span>
-            </span>
+          <Link href="/" className="flex items-center">
+            <img src="/logo-navbar.png" alt="Mansi's Palette" className="h-8 w-auto object-contain" />
           </Link>
         </div>
 
@@ -291,11 +286,8 @@ export function Footer() {
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
         {/* Brand */}
         <div className="flex flex-col items-center md:items-start gap-2">
-          <Link href="/" className="flex items-center gap-2 text-ink font-semibold tracking-tight text-sm">
-            <span className="flex items-center justify-center w-5 h-5 rounded-sm bg-primary border border-hairline">
-              <Sparkles className="w-3 h-3 text-primary-foreground" aria-hidden="true" />
-            </span>
-            <span>Mansi's Palette</span>
+          <Link href="/" className="flex items-center">
+            <img src="/logo-navbar.png" alt="Mansi's Palette" className="h-6 w-auto object-contain" />
           </Link>
           <p className="text-[11px] text-ink-tertiary text-center md:text-left">
             Original hand-painted artworks &amp; custom commissions.

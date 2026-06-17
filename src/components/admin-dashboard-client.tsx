@@ -573,12 +573,21 @@ export function AdminDashboardClient({
     <div className="flex flex-col gap-8">
       {/* Title block */}
       <div className="flex justify-between items-center border-b border-hairline pb-6">
-        <div>
-          <span className="text-[10px] font-bold uppercase tracking-[0.4px] text-primary flex items-center gap-1">
-            <ShieldCheck className="w-4 h-4" />
-            Studio Management
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-[-0.8px] mt-1 text-ink">Admin Dashboard</h1>
+        <div className="flex items-center gap-3">
+          <Image
+            src="/logo-icon.png"
+            alt="Mansi's Palette Logo"
+            width={40}
+            height={40}
+            className="object-contain"
+          />
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.4px] text-primary flex items-center gap-1">
+              <ShieldCheck className="w-4 h-4" />
+              Studio Management
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-[-0.8px] mt-1 text-ink">Admin Dashboard</h1>
+          </div>
         </div>
       </div>
 
