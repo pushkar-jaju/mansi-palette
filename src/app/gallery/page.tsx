@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Navbar, Footer } from "@/components/navigation";
 import { GalleryFilters } from "@/components/gallery-filters";
 import { WishlistHeartButton } from "@/components/wishlist-heart-button";
+import { getOptimizedUrl } from "@/lib/cloudinary-utils";
 
 interface PageProps {
   searchParams: Promise<{
@@ -96,7 +97,7 @@ export default async function GalleryPage({ searchParams }: PageProps) {
               >
                 <div className="relative aspect-[4/3] w-full rounded-sm overflow-hidden bg-surface-2 mb-4">
                   <Image
-                    src={painting.imageUrl}
+                    src={getOptimizedUrl(painting.imageUrl)}
                     alt={painting.title}
                     fill
                     sizes="(max-w-7xl) 33vw, 400px"

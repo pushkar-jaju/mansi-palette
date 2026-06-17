@@ -8,12 +8,15 @@ import { useRouter } from "next/navigation";
 import { Sparkles, ShoppingBag, Eye, X, Check, ArrowLeft, Ruler } from "lucide-react";
 import { WishlistHeartButton } from "@/components/wishlist-heart-button";
 
+import { getOptimizedUrl } from "@/lib/cloudinary-utils";
+
 interface PaintingDetailClientProps {
   painting: {
     id: string;
     title: string;
     description: string;
     imageUrl: string;
+    images?: string[];
     price: number;
     width: number;
     height: number;
@@ -30,6 +33,9 @@ export function PaintingDetailClient({ painting }: PaintingDetailClientProps) {
   const { addToCart, isInCart } = useCart();
   const { user } = useAuth();
   const router = useRouter();
+  
+  const allImages = painting.images && painting.images.length > 0 ? painting.images : [painting.imageUrl];
+  const [activeImage, setActiveImage] = useState(painting.imageUrl);
   
   const [viewInRoomOpen, setViewInRoomOpen] = useState(false);
   const [wallColor, setWallColor] = useState("#1e2022"); // Default Slate Dark
@@ -92,7 +98,7 @@ export function PaintingDetailClient({ painting }: PaintingDetailClientProps) {
           <div className="relative aspect-[4/3] w-full bg-surface-1 border border-hairline rounded-md overflow-hidden p-4">
             <div className="relative w-full h-full rounded-sm overflow-hidden bg-surface-2">
               <Image
-                src={painting.imageUrl}
+                src={getOptimizedUrl(activeImage)}
                 alt={painting.title}
                 fill
                 priority
@@ -106,6 +112,29 @@ export function PaintingDetailClient({ painting }: PaintingDetailClientProps) {
               </span>
             )}
           </div>
+
+          {/* Thumbnails list */}
+          {allImages.length > 1 && (
+            <div className="flex gap-2 flex-wrap items-center mt-1">
+              {allImages.map((imgUrl, index) => (
+                <button
+                  key={index}
+                  onClick={() => setActiveImage(imgUrl)}
+                  className={`relative w-16 h-16 border rounded-sm overflow-hidden bg-surface-2 transition-all ${
+                    activeImage === imgUrl ? "border-primary scale-[1.03]" : "border-hairline hover:border-hairline-strong"
+                  }`}
+                >
+                  <Image
+                    src={getOptimizedUrl(imgUrl)}
+                    alt={`${painting.title} thumbnail ${index + 1}`}
+                    fill
+                    sizes="64px"
+                    className="object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Interactive Viewer Button */}
           <button
@@ -264,7 +293,7 @@ export function PaintingDetailClient({ painting }: PaintingDetailClientProps) {
               >
                 <div className="relative w-full h-full">
                   <Image
-                    src={painting.imageUrl}
+                    src={getOptimizedUrl(activeImage)}
                     alt={painting.title}
                     fill
                     className="object-cover"

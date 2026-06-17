@@ -54,8 +54,10 @@ model Painting {
   id          String         @id @default(cuid())
   title       String
   description String
-  imageUrl    String
-  images      String[]       @default([])
+  imageUrl        String
+  imagePublicId   String?
+  images          String[]       @default([])
+  imagesPublicIds String[]       @default([])
   price       Float
   width       Float          // in inches
   height      Float          // in inches

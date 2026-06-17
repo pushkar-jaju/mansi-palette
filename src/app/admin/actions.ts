@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth";
 import { uploadImage } from "@/lib/upload";
 import { revalidatePath } from "next/cache";
 import { getFriendlyErrorMessage } from "@/lib/errors";
+import { uploadToServer, deleteFromCloudinary, extractPublicId } from "@/lib/cloudinary";
 
 // Helper to verify admin role
 async function verifyAdmin() {
@@ -30,21 +31,39 @@ export async function addPainting(formData: FormData) {
     const category = formData.get("category") as string;
     const isFeaturedStr = formData.get("isFeatured") as string;
 
-    const files = formData.getAll("imageFiles") as File[];
-    const imageUrls: string[] = [];
-
-    for (const f of files) {
-      if (f && f.size > 0) {
-        const url = await uploadImage(f);
-        imageUrls.push(url);
-      }
+    // Parse pre-uploaded images from client
+    const cloudinaryUrlsJson = formData.get("cloudinaryUrls") as string;
+    const cloudinaryPublicIdsJson = formData.get("cloudinaryPublicIds") as string;
+    
+    let imageUrls: string[] = [];
+    let imagesPublicIds: string[] = [];
+    
+    if (cloudinaryUrlsJson) {
+      imageUrls = JSON.parse(cloudinaryUrlsJson);
+    }
+    if (cloudinaryPublicIdsJson) {
+      imagesPublicIds = JSON.parse(cloudinaryPublicIdsJson);
     }
 
-    const singleFile = formData.get("imageFile") as File;
-    if (singleFile && singleFile.size > 0) {
-      const url = await uploadImage(singleFile);
-      if (!imageUrls.includes(url)) {
-        imageUrls.unshift(url);
+    // Fallback: If raw files are uploaded directly to the server action
+    // (Only run if client-side pre-upload did not already populate imageUrls)
+    if (imageUrls.length === 0) {
+      const files = formData.getAll("imageFiles") as File[];
+      for (const f of files) {
+        if (f && f.size > 0) {
+          const result = await uploadToServer(f);
+          imageUrls.push(result.secure_url);
+          imagesPublicIds.push(result.public_id);
+        }
+      }
+
+      const singleFile = formData.get("imageFile") as File;
+      if (singleFile && singleFile.size > 0) {
+        const result = await uploadToServer(singleFile);
+        if (!imageUrls.includes(result.secure_url)) {
+          imageUrls.unshift(result.secure_url);
+          imagesPublicIds.unshift(result.public_id);
+        }
       }
     }
 
@@ -62,6 +81,7 @@ export async function addPainting(formData: FormData) {
     }
 
     const imageUrl = imageUrls[0];
+    const imagePublicId = imagesPublicIds[0] || null;
 
     await prisma.painting.create({
       data: {
@@ -75,7 +95,9 @@ export async function addPainting(formData: FormData) {
         frameOption: frameOption || "Unframed",
         category,
         imageUrl,
+        imagePublicId,
         images: imageUrls,
+        imagesPublicIds,
         isFeatured,
         status: "AVAILABLE",
       },
@@ -108,31 +130,69 @@ export async function editPainting(paintingId: string, formData: FormData) {
     const isFeaturedStr = formData.get("isFeatured") as string;
     const status = formData.get("status") as any; // PaintingStatus enum
     
-    // Parse existing images
+    // Fetch the current painting to find deleted images later
+    const currentPainting = await prisma.painting.findUnique({
+      where: { id: paintingId },
+      select: { images: true, imagesPublicIds: true, imageUrl: true, imagePublicId: true },
+    });
+    
+    if (!currentPainting) {
+      return { success: false, error: "Painting not found." };
+    }
+
+    // Parse pre-uploaded images from client
+    const cloudinaryUrlsJson = formData.get("cloudinaryUrls") as string;
+    const cloudinaryPublicIdsJson = formData.get("cloudinaryPublicIds") as string;
+    
+    let newImageUrls: string[] = [];
+    let newImagePublicIds: string[] = [];
+    
+    if (cloudinaryUrlsJson) {
+      newImageUrls = JSON.parse(cloudinaryUrlsJson);
+    }
+    if (cloudinaryPublicIdsJson) {
+      newImagePublicIds = JSON.parse(cloudinaryPublicIdsJson);
+    }
+
+    // Parse existing images/publicIds that were retained
     const existingImagesJson = formData.get("existingImages") as string;
-    let images: string[] = [];
+    let retainedImages: string[] = [];
     if (existingImagesJson) {
       try {
-        images = JSON.parse(existingImagesJson);
+        retainedImages = JSON.parse(existingImagesJson);
       } catch {
-        images = existingImagesJson.split(",").filter(Boolean);
+        retainedImages = existingImagesJson.split(",").filter(Boolean);
       }
     }
 
-    // New uploaded files
-    const files = formData.getAll("imageFiles") as File[];
-    for (const f of files) {
-      if (f && f.size > 0) {
-        const url = await uploadImage(f);
-        images.push(url);
+    const existingPublicIdsJson = formData.get("existingImagesPublicIds") as string;
+    let retainedPublicIds: string[] = [];
+    if (existingPublicIdsJson) {
+      try {
+        retainedPublicIds = JSON.parse(existingPublicIdsJson);
+      } catch {
+        retainedPublicIds = existingPublicIdsJson.split(",").filter(Boolean);
       }
     }
 
-    // Single upload file input fallback
-    const singleFile = formData.get("imageFile") as File;
-    if (singleFile && singleFile.size > 0) {
-      const url = await uploadImage(singleFile);
-      images.push(url);
+    // Fallback: New files uploaded directly to server action
+    // (Only run if client-side pre-upload did not already populate newImageUrls)
+    if (newImageUrls.length === 0) {
+      const files = formData.getAll("imageFiles") as File[];
+      for (const f of files) {
+        if (f && f.size > 0) {
+          const result = await uploadToServer(f);
+          newImageUrls.push(result.secure_url);
+          newImagePublicIds.push(result.public_id);
+        }
+      }
+
+      const singleFile = formData.get("imageFile") as File;
+      if (singleFile && singleFile.size > 0) {
+        const result = await uploadToServer(singleFile);
+        newImageUrls.push(result.secure_url);
+        newImagePublicIds.push(result.public_id);
+      }
     }
 
     if (!title || !description || !priceStr || !widthStr || !heightStr || !medium || !canvasType || !category) {
@@ -148,7 +208,25 @@ export async function editPainting(paintingId: string, formData: FormData) {
       return { success: false, error: "Invalid pricing or dimension numbers." };
     }
 
-    const imageUrl = images.length > 0 ? images[0] : "/paintings/misty_forest.png";
+    const finalImages = [...retainedImages, ...newImageUrls];
+    const finalPublicIds = [...retainedPublicIds, ...newImagePublicIds];
+
+    const imageUrl = finalImages.length > 0 ? finalImages[0] : "/paintings/misty_forest.png";
+    const imagePublicId = finalPublicIds.length > 0 ? finalPublicIds[0] : null;
+
+    // Detect and delete removed images from Cloudinary
+    const deletedPublicIds = currentPainting.imagesPublicIds.filter(
+      (id) => !finalPublicIds.includes(id)
+    );
+    if (currentPainting.imagePublicId && !finalPublicIds.includes(currentPainting.imagePublicId)) {
+      deletedPublicIds.push(currentPainting.imagePublicId);
+    }
+
+    for (const pubId of deletedPublicIds) {
+      if (pubId) {
+        await deleteFromCloudinary(pubId);
+      }
+    }
 
     await prisma.painting.update({
       where: { id: paintingId },
@@ -165,7 +243,9 @@ export async function editPainting(paintingId: string, formData: FormData) {
         status,
         isFeatured,
         imageUrl,
-        images,
+        imagePublicId,
+        images: finalImages,
+        imagesPublicIds: finalPublicIds,
       },
     });
 
@@ -184,6 +264,24 @@ export async function editPainting(paintingId: string, formData: FormData) {
 export async function deletePainting(paintingId: string) {
   try {
     await verifyAdmin();
+
+    const painting = await prisma.painting.findUnique({
+      where: { id: paintingId },
+      select: { imagePublicId: true, imagesPublicIds: true },
+    });
+
+    if (painting) {
+      const publicIdsToDelete = [...painting.imagesPublicIds];
+      if (painting.imagePublicId && !publicIdsToDelete.includes(painting.imagePublicId)) {
+        publicIdsToDelete.push(painting.imagePublicId);
+      }
+
+      for (const pubId of publicIdsToDelete) {
+        if (pubId) {
+          await deleteFromCloudinary(pubId);
+        }
+      }
+    }
 
     await prisma.painting.delete({
       where: { id: paintingId },
@@ -444,7 +542,23 @@ export async function updateStoreSettings(formData: FormData) {
     let logoUrl: string | undefined = undefined;
     const logoFile = formData.get("storeLogoFile") as File;
     if (logoFile && logoFile.size > 0) {
-      logoUrl = await uploadImage(logoFile);
+      // Fetch current settings to get old logo URL for clean deletion
+      const currentSettings = await prisma.storeSettings.findUnique({
+        where: { id: "default" },
+        select: { storeLogo: true },
+      });
+
+      // Upload new logo
+      const result = await uploadToServer(logoFile);
+      logoUrl = result.secure_url;
+
+      // Clean up old logo from Cloudinary
+      if (currentSettings?.storeLogo) {
+        const oldPubId = extractPublicId(currentSettings.storeLogo);
+        if (oldPubId) {
+          await deleteFromCloudinary(oldPubId);
+        }
+      }
     }
 
     await prisma.storeSettings.upsert({

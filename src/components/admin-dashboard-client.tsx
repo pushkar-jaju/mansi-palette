@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useTransition, useRef } from "react";
 import Image from "next/image";
+import axios from "axios";
+import { getOptimizedUrl } from "@/lib/cloudinary-utils";
 import { 
   addPainting, 
   editPainting, 
@@ -14,6 +16,7 @@ import {
   updateStoreSettings 
 } from "@/app/admin/actions";
 import { parseAddressString } from "@/lib/address";
+import { formatDate, formatDateTime, formatShortDateTime } from "@/lib/utils";
 import { 
   IndianRupee, ShoppingBag, Layers, Paintbrush, 
   Trash2, Plus, Check, AlertCircle, FileImage, ShieldCheck,
@@ -49,6 +52,7 @@ export function AdminDashboardClient({
   customers,
   settings
 }: AdminDashboardClientProps) {
+  const addFormRef = useRef<HTMLFormElement>(null);
   const [activeTab, setActiveTab] = useState<"stats" | "paintings" | "orders" | "commissions" | "customers" | "reviews" | "analytics" | "settings">("stats");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +80,21 @@ export function AdminDashboardClient({
   const [addImagesNames, setAddImagesNames] = useState<string[]>([]);
   const [editImagesNames, setEditImagesNames] = useState<string[]>([]);
   const [commissionNotes, setCommissionNotes] = useState<{ [id: string]: string }>({});
+
+  // Cloudinary Direct Client-Side Upload states
+  const [isUploadingAdd, setIsUploadingAdd] = useState(false);
+  const [addUploadProgress, setAddUploadProgress] = useState<{ [key: string]: number }>({});
+  const [addUploadedUrls, setAddUploadedUrls] = useState<string[]>([]);
+  const [addUploadedPublicIds, setAddUploadedPublicIds] = useState<string[]>([]);
+  const [addUploadError, setAddUploadError] = useState<string | null>(null);
+
+  const [isUploadingEdit, setIsUploadingEdit] = useState(false);
+  const [editUploadProgress, setEditUploadProgress] = useState<{ [key: string]: number }>({});
+  const [editUploadedUrls, setEditUploadedUrls] = useState<string[]>([]);
+  const [editUploadedPublicIds, setEditUploadedPublicIds] = useState<string[]>([]);
+  const [editUploadError, setEditUploadError] = useState<string | null>(null);
+
+  const [editingPaintingPublicIds, setEditingPaintingPublicIds] = useState<string[]>([]);
   
   // Settings Logo Name state
   const [settingsLogoName, setSettingsLogoName] = useState("");
@@ -123,16 +142,118 @@ export function AdminDashboardClient({
     setTimeout(() => setError(null), 5000);
   };
 
+  // Direct Cloudinary upload function using signed requests
+  const uploadFiles = async (
+    files: FileList,
+    setProgress: React.Dispatch<React.SetStateAction<{ [key: string]: number }>>,
+    setUrls: React.Dispatch<React.SetStateAction<string[]>>,
+    setPublicIds: React.Dispatch<React.SetStateAction<string[]>>,
+    setIsUploading: React.Dispatch<React.SetStateAction<boolean>>,
+    setError: React.Dispatch<React.SetStateAction<string | null>>
+  ) => {
+    setIsUploading(true);
+    setError(null);
+    setProgress({});
+    
+    const urls: string[] = [];
+    const publicIds: string[] = [];
+    
+    try {
+      // 1. Validation (JPG, PNG, WEBP up to 5MB)
+      const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!allowedTypes.includes(file.type)) {
+          throw new Error(`Invalid file type: ${file.name}. Only JPG, PNG, and WEBP images are allowed.`);
+        }
+        if (file.size > maxSize) {
+          throw new Error(`File size too large: ${file.name}. Maximum size limit is 5MB.`);
+        }
+      }
+      
+      // 2. Fetch signed signature parameters from secure route
+      const signRes = await axios.post("/api/cloudinary/sign", {
+        folder: "mansis-palette"
+      });
+      const { signature, timestamp, apiKey, cloudName } = signRes.data;
+      
+      // 3. Upload files to Cloudinary with progress tracking
+      const uploadPromises = Array.from(files).map(async (file) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("signature", signature);
+        formData.append("timestamp", timestamp.toString());
+        formData.append("api_key", apiKey);
+        formData.append("folder", "mansis-palette");
+        
+        const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+        
+        const res = await axios.post(uploadUrl, formData, {
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              setProgress(prev => ({ ...prev, [file.name]: percent }));
+            }
+          }
+        });
+        
+        return {
+          secure_url: res.data.secure_url,
+          public_id: res.data.public_id
+        };
+      });
+      
+      const results = await Promise.all(uploadPromises);
+      results.forEach((r) => {
+        urls.push(r.secure_url);
+        publicIds.push(r.public_id);
+      });
+      
+      setUrls(prev => [...prev, ...urls]);
+      setPublicIds(prev => [...prev, ...publicIds]);
+    } catch (e: any) {
+      console.error("Direct upload error:", e);
+      setError(e.response?.data?.error || e.message || "Upload failed. Please check setup.");
+      setProgress({});
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   // Add painting form upload callback
-  const handleAddFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAddFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    setAddImagesNames(files ? Array.from(files).map(f => f.name) : []);
+    if (!files || files.length === 0) return;
+    setAddImagesNames(Array.from(files).map(f => f.name));
+    setAddUploadedUrls([]);
+    setAddUploadedPublicIds([]);
+    await uploadFiles(
+      files,
+      setAddUploadProgress,
+      setAddUploadedUrls,
+      setAddUploadedPublicIds,
+      setIsUploadingAdd,
+      setAddUploadError
+    );
   };
 
   // Edit painting form upload callback
-  const handleEditFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEditFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    setEditImagesNames(files ? Array.from(files).map(f => f.name) : []);
+    if (!files || files.length === 0) return;
+    setEditImagesNames(Array.from(files).map(f => f.name));
+    setEditUploadedUrls([]);
+    setEditUploadedPublicIds([]);
+    await uploadFiles(
+      files,
+      setEditUploadProgress,
+      setEditUploadedUrls,
+      setEditUploadedPublicIds,
+      setIsUploadingEdit,
+      setEditUploadError
+    );
   };
 
   // Settings logo upload callback
@@ -144,13 +265,24 @@ export function AdminDashboardClient({
   // Add painting action handler
   const handleAddPainting = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
+    if (isUploadingAdd) {
+      alert("Please wait until images complete uploading.");
+      return;
+    }
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    formData.append("cloudinaryUrls", JSON.stringify(addUploadedUrls));
+    formData.append("cloudinaryPublicIds", JSON.stringify(addUploadedPublicIds));
+
     startTransition(async () => {
       const res = await addPainting(formData);
       if (res.success) {
         showSuccess("Painting added successfully to the catalog.");
-        e.currentTarget.reset();
+        addFormRef.current?.reset();
         setAddImagesNames([]);
+        setAddUploadedUrls([]);
+        setAddUploadedPublicIds([]);
+        setAddUploadProgress({});
       } else {
         showError(res.error || "Failed to add painting.");
       }
@@ -161,9 +293,15 @@ export function AdminDashboardClient({
   const handleEditPaintingSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!editingPainting) return;
+    if (isUploadingEdit) {
+      alert("Please wait until images complete uploading.");
+      return;
+    }
     const formData = new FormData(e.currentTarget);
-    // Add remaining existing images
     formData.append("existingImages", JSON.stringify(editingPaintingImages));
+    formData.append("existingImagesPublicIds", JSON.stringify(editingPaintingPublicIds));
+    formData.append("cloudinaryUrls", JSON.stringify(editUploadedUrls));
+    formData.append("cloudinaryPublicIds", JSON.stringify(editUploadedPublicIds));
     
     startTransition(async () => {
       const res = await editPainting(editingPainting.id, formData);
@@ -171,6 +309,9 @@ export function AdminDashboardClient({
         showSuccess("Painting details updated successfully.");
         setEditingPainting(null);
         setEditImagesNames([]);
+        setEditUploadedUrls([]);
+        setEditUploadedPublicIds([]);
+        setEditUploadProgress({});
       } else {
         showError(res.error || "Failed to update painting.");
       }
@@ -385,17 +526,18 @@ export function AdminDashboardClient({
   // Analytics Helpers
   const getMonthlyAnalytics = () => {
     const monthlyData: { [key: string]: { revenue: number; ordersCount: number } } = {};
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
-      const key = d.toLocaleString("default", { month: "short", year: "2-digit" });
+      const key = `${months[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}`;
       monthlyData[key] = { revenue: 0, ordersCount: 0 };
     }
 
     orders.forEach((o) => {
       if (o.paymentStatus === "PAID") {
         const date = new Date(o.createdAt);
-        const key = date.toLocaleString("default", { month: "short", year: "2-digit" });
+        const key = `${months[date.getMonth()]} ${String(date.getFullYear()).slice(-2)}`;
         if (monthlyData[key] !== undefined) {
           monthlyData[key].revenue += o.totalAmount;
           monthlyData[key].ordersCount += 1;
@@ -564,7 +706,7 @@ export function AdminDashboardClient({
                       <tr key={o.id} className="border-b border-hairline/40 hover:bg-surface-2/20">
                         <td className="py-2.5">
                           <span className="font-semibold text-ink">{o.customerName}</span>
-                          <span className="block text-[10px] text-ink-subtle">{new Date(o.createdAt).toLocaleDateString()}</span>
+                          <span className="block text-[10px] text-ink-subtle">{formatDate(o.createdAt)}</span>
                         </td>
                         <td className="py-2.5 text-right font-semibold">₹{o.totalAmount.toLocaleString()}</td>
                         <td className="py-2.5 text-center">
@@ -608,7 +750,7 @@ export function AdminDashboardClient({
                       <tr key={c.id} className="border-b border-hairline/40 hover:bg-surface-2/20">
                         <td className="py-2.5">
                           <span className="font-semibold text-ink truncate max-w-[120px] block">{c.title}</span>
-                          <span className="block text-[10px] text-ink-subtle">{new Date(c.createdAt).toLocaleDateString()}</span>
+                          <span className="block text-[10px] text-ink-subtle">{formatDate(c.createdAt)}</span>
                         </td>
                         <td className="py-2.5 text-ink-subtle">{c.clientName}</td>
                         <td className="py-2.5 text-center">
@@ -631,6 +773,7 @@ export function AdminDashboardClient({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Left: Add Painting Form */}
           <form
+            ref={addFormRef}
             onSubmit={handleAddPainting}
             className="lg:col-span-4 bg-surface-1 border border-hairline rounded-md p-5 flex flex-col gap-4"
           >
@@ -772,24 +915,56 @@ export function AdminDashboardClient({
                   type="file"
                   name="imageFiles"
                   multiple
-                  required
+                  required={addUploadedUrls.length === 0}
                   accept="image/*"
                   onChange={handleAddFilesChange}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
                 <span className="flex items-center gap-1.5 text-xs text-ink-subtle px-2 truncate">
                   <Upload className="w-4 h-4 text-primary flex-shrink-0" />
-                  <span className="truncate">{addImagesNames.length > 0 ? `${addImagesNames.length} files: ${addImagesNames.join(", ")}` : "Choose art files…"}</span>
+                  <span className="truncate">{addImagesNames.length > 0 ? `${addImagesNames.length} files selected` : "Choose art files…"}</span>
                 </span>
               </div>
             </div>
 
+            {/* Add progress indicators */}
+            {isUploadingAdd && (
+              <div className="flex flex-col gap-2 p-3 bg-surface-2/40 border border-hairline rounded-sm text-[11px]">
+                <div className="font-semibold text-primary uppercase text-[9px] tracking-wider flex items-center gap-1">
+                  <span className="animate-spin w-3 h-3 border border-primary border-t-transparent rounded-full" />
+                  Uploading to Cloudinary...
+                </div>
+                {Object.entries(addUploadProgress).map(([filename, percent]) => (
+                  <div key={filename} className="flex flex-col gap-1">
+                    <div className="flex justify-between text-ink-muted text-[10px]">
+                      <span className="truncate max-w-[180px]">{filename}</span>
+                      <span>{percent}%</span>
+                    </div>
+                    <div className="w-full h-1 bg-hairline rounded-full overflow-hidden">
+                      <div className="h-full bg-primary transition-all duration-300" style={{ width: `${percent}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {addUploadError && (
+              <div className="p-2.5 bg-red-950/20 border border-red-900/30 text-red-400 text-[10px] rounded-sm">
+                {addUploadError}
+              </div>
+            )}
+            {!isUploadingAdd && addUploadedUrls.length > 0 && (
+              <div className="p-2 bg-green-950/20 border border-green-900/30 text-green-400 text-[10px] rounded-sm flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5" />
+                <span>Uploaded {addUploadedUrls.length} image(s) successfully!</span>
+              </div>
+            )}
+
             <button
               type="submit"
-              disabled={isPending}
+              disabled={isPending || isUploadingAdd}
               className="mt-2 w-full py-2 bg-primary hover:bg-primary-hover border border-primary text-primary-foreground text-xs font-semibold rounded-sm transition-all disabled:opacity-50"
             >
-              {isPending ? "Adding Painting…" : "Add to Catalog"}
+              {isPending ? "Adding Painting…" : isUploadingAdd ? "Uploading Images…" : "Add to Catalog"}
             </button>
           </form>
 
@@ -851,7 +1026,7 @@ export function AdminDashboardClient({
                       <td className="py-3">
                         <div className="flex items-center gap-3">
                           <div className="relative w-8 h-8 rounded-sm bg-surface-2 overflow-hidden flex-shrink-0">
-                            <Image src={p.imageUrl} alt={p.title} fill className="object-cover" sizes="32px" />
+                            <Image src={getOptimizedUrl(p.imageUrl)} alt={p.title} fill className="object-cover" sizes="32px" />
                           </div>
                           <div>
                             <span className="font-semibold text-ink-muted truncate max-w-[150px] block">{p.title}</span>
@@ -876,7 +1051,12 @@ export function AdminDashboardClient({
                             onClick={() => {
                               setEditingPainting(p);
                               setEditingPaintingImages(p.images || [p.imageUrl]);
+                              setEditingPaintingPublicIds(p.imagesPublicIds || [p.imagePublicId].filter(Boolean));
                               setEditImagesNames([]);
+                              setEditUploadedUrls([]);
+                              setEditUploadedPublicIds([]);
+                              setEditUploadProgress({});
+                              setEditUploadError(null);
                             }}
                             className="p-1 rounded-sm text-ink-subtle hover:text-primary transition-colors"
                             title="Edit details"
@@ -961,7 +1141,7 @@ export function AdminDashboardClient({
                       <td className="py-4 text-ink-subtle">
                         <div className="font-semibold text-ink">{o.customerName}</div>
                         <div>{o.customerEmail}</div>
-                        <div className="text-[10px] text-ink-tertiary">{new Date(o.createdAt).toLocaleDateString()}</div>
+                        <div className="text-[10px] text-ink-tertiary">{formatDate(o.createdAt)}</div>
                       </td>
                       <td className="py-4">
                         <div className="flex flex-col gap-1.5 max-w-[180px]">
@@ -1077,7 +1257,7 @@ export function AdminDashboardClient({
                         <div>Dimensions: <span className="font-semibold text-ink-muted block text-xs mt-0.5">{c.width}&quot; &times; {c.height}&quot;</span></div>
                         <div>Client Budget: <span className="font-semibold text-ink-muted block text-xs mt-0.5">₹{c.budget.toLocaleString()}</span></div>
                         <div>Quote Amount: <span className="font-semibold text-primary block text-xs mt-0.5">{c.quoteAmount ? `₹${c.quoteAmount.toLocaleString()}` : "Not Sent"}</span></div>
-                        <div>Received: <span className="font-semibold text-ink-muted block text-xs mt-0.5">{new Date(c.createdAt).toLocaleDateString()}</span></div>
+                        <div>Received: <span className="font-semibold text-ink-muted block text-xs mt-0.5">{formatDate(c.createdAt)}</span></div>
                       </div>
 
                       {/* Progress update slider for Approved / In Progress */}
@@ -1293,7 +1473,7 @@ export function AdminDashboardClient({
                         {Array.from({ length: 5 }).map((_, i) => (
                           <Star key={i} className={`w-3.5 h-3.5 ${i < rev.rating ? "text-primary fill-primary" : "text-ink-tertiary"}`} />
                         ))}
-                        <span className="text-[10px] text-ink-tertiary ml-2">{new Date(rev.createdAt).toLocaleDateString()}</span>
+                        <span className="text-[10px] text-ink-tertiary ml-2">{formatDate(rev.createdAt)}</span>
                       </div>
                     </div>
 
@@ -1494,7 +1674,7 @@ export function AdminDashboardClient({
                       <tr key={p.id} className="border-b border-hairline/40 hover:bg-surface-2/20">
                         <td className="py-3 font-semibold text-ink flex items-center gap-2">
                           <div className="relative w-6 h-6 rounded-sm bg-surface-2 overflow-hidden flex-shrink-0">
-                            <Image src={p.imageUrl} alt={p.title} fill className="object-cover" sizes="24px" />
+                            <Image src={getOptimizedUrl(p.imageUrl)} alt={p.title} fill className="object-cover" sizes="24px" />
                           </div>
                           <span>{p.title}</span>
                         </td>
@@ -1518,7 +1698,7 @@ export function AdminDashboardClient({
                     <div>
                       <span className="font-semibold text-ink">New Order Placed</span>
                       <p className="text-[10px] text-ink-subtle mt-0.5">₹{o.totalAmount} by {o.customerName}</p>
-                      <span className="text-[9px] text-ink-tertiary block mt-0.5">{new Date(o.createdAt).toLocaleString()}</span>
+                      <span className="text-[9px] text-ink-tertiary block mt-0.5">{formatDateTime(o.createdAt)}</span>
                     </div>
                   </div>
                 ))}
@@ -1529,7 +1709,7 @@ export function AdminDashboardClient({
                     <div>
                       <span className="font-semibold text-ink">Commission Request</span>
                       <p className="text-[10px] text-ink-subtle mt-0.5">&ldquo;{c.title}&rdquo; by {c.clientName}</p>
-                      <span className="text-[9px] text-ink-tertiary block mt-0.5">{new Date(c.createdAt).toLocaleString()}</span>
+                      <span className="text-[9px] text-ink-tertiary block mt-0.5">{formatDateTime(c.createdAt)}</span>
                     </div>
                   </div>
                 ))}
@@ -1576,7 +1756,7 @@ export function AdminDashboardClient({
                 <label className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold font-mono">Brand Logo File</label>
                 {settings.storeLogo && (
                   <div className="relative w-16 h-10 border border-hairline rounded-sm mb-1 bg-surface-2 overflow-hidden flex items-center justify-center">
-                    <Image src={settings.storeLogo} alt="Store Logo" fill className="object-contain" />
+                    <Image src={getOptimizedUrl(settings.storeLogo)} alt="Store Logo" fill className="object-contain" />
                   </div>
                 )}
                 <div className="relative flex items-center justify-center w-full h-[36px] bg-canvas border border-hairline rounded-sm hover:border-hairline-strong transition-colors cursor-pointer">
@@ -1888,7 +2068,10 @@ export function AdminDashboardClient({
                       <Image src={imgUrl} alt="Artwork img" fill className="object-cover" sizes="50px" />
                       <button
                         type="button"
-                        onClick={() => setEditingPaintingImages(prev => prev.filter(item => item !== imgUrl))}
+                        onClick={() => {
+                          setEditingPaintingImages(prev => prev.filter((_, i) => i !== idx));
+                          setEditingPaintingPublicIds(prev => prev.filter((_, i) => i !== idx));
+                        }}
                         className="absolute inset-0 bg-red-950/80 opacity-0 group-hover:opacity-100 flex items-center justify-center text-red-400 text-xs font-semibold transition-opacity"
                         title="Delete image"
                       >
@@ -1913,10 +2096,42 @@ export function AdminDashboardClient({
                   />
                   <span className="flex items-center gap-1.5 text-xs text-ink-subtle px-2 truncate">
                     <Upload className="w-4 h-4 text-primary flex-shrink-0" />
-                    <span className="truncate">{editImagesNames.length > 0 ? `${editImagesNames.length} new files` : "Choose new files to append…"}</span>
+                    <span className="truncate">{editImagesNames.length > 0 ? `${editImagesNames.length} new files selected` : "Choose new files to append…"}</span>
                   </span>
                 </div>
               </div>
+
+              {/* Edit progress indicators */}
+              {isUploadingEdit && (
+                <div className="flex flex-col gap-2 p-3 bg-surface-2/40 border border-hairline rounded-sm text-[11px]">
+                  <div className="font-semibold text-primary uppercase text-[9px] tracking-wider flex items-center gap-1">
+                    <span className="animate-spin w-3 h-3 border border-primary border-t-transparent rounded-full" />
+                    Uploading to Cloudinary...
+                  </div>
+                  {Object.entries(editUploadProgress).map(([filename, percent]) => (
+                    <div key={filename} className="flex flex-col gap-1">
+                      <div className="flex justify-between text-ink-muted text-[10px]">
+                        <span className="truncate max-w-[180px]">{filename}</span>
+                        <span>{percent}%</span>
+                      </div>
+                      <div className="w-full h-1 bg-hairline rounded-full overflow-hidden">
+                        <div className="h-full bg-primary transition-all duration-300" style={{ width: `${percent}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {editUploadError && (
+                <div className="p-2.5 bg-red-950/20 border border-red-900/30 text-red-400 text-[10px] rounded-sm">
+                  {editUploadError}
+                </div>
+              )}
+              {!isUploadingEdit && editUploadedUrls.length > 0 && (
+                <div className="p-2 bg-green-950/20 border border-green-900/30 text-green-400 text-[10px] rounded-sm flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Uploaded {editUploadedUrls.length} new image(s) successfully!</span>
+                </div>
+              )}
 
               <div className="flex justify-end gap-3 border-t border-hairline pt-4 mt-2">
                 <button
@@ -1928,10 +2143,10 @@ export function AdminDashboardClient({
                 </button>
                 <button
                   type="submit"
-                  disabled={isPending}
-                  className="px-4 py-2 bg-primary border border-primary text-primary-foreground hover:bg-primary-hover text-xs font-semibold rounded-sm transition-all"
+                  disabled={isPending || isUploadingEdit}
+                  className="px-4 py-2 bg-primary border border-primary text-primary-foreground hover:bg-primary-hover text-xs font-semibold rounded-sm transition-all disabled:opacity-50"
                 >
-                  Save changes
+                  {isPending ? "Saving changes…" : isUploadingEdit ? "Uploading Images…" : "Save changes"}
                 </button>
               </div>
             </form>
@@ -2188,7 +2403,7 @@ export function AdminDashboardClient({
                           <span className="absolute left-[-17px] top-1.5 w-2.5 h-2.5 rounded-full bg-primary border-2 border-surface-1" />
                           <div className="flex items-center justify-between text-[10px]">
                             <span className="font-bold text-ink uppercase tracking-wide">{evt.status}</span>
-                            <span className="text-ink-tertiary font-mono">{new Date(evt.createdAt).toLocaleString("default", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                            <span className="text-ink-tertiary font-mono">{formatShortDateTime(evt.createdAt)}</span>
                           </div>
                           {evt.note && <p className="text-[11px] text-ink-subtle italic mt-0.5 leading-normal">&ldquo;{evt.note}&rdquo;</p>}
                         </div>
@@ -2237,7 +2452,7 @@ export function AdminDashboardClient({
                 </div>
                 <div>
                   <span className="text-[10px] text-ink-subtle uppercase block">Customer Since</span>
-                  <span className="text-sm text-ink block mt-0.5">{new Date(viewingCustomer.createdAt).toLocaleDateString()}</span>
+                  <span className="text-sm text-ink block mt-0.5">{formatDate(viewingCustomer.createdAt)}</span>
                 </div>
               </div>
 
@@ -2261,7 +2476,7 @@ export function AdminDashboardClient({
                         {viewingCustomer.orders.map((o: any) => (
                           <tr key={o.id} className="border-b border-hairline/60 hover:bg-surface-2/10">
                             <td className="p-2.5 font-mono text-[10px] text-ink-muted">{o.id}</td>
-                            <td className="p-2.5 text-ink-subtle">{new Date(o.createdAt).toLocaleDateString()}</td>
+                            <td className="p-2.5 text-ink-subtle">{formatDate(o.createdAt)}</td>
                             <td className="p-2.5 text-right font-semibold text-ink">₹{o.totalAmount.toLocaleString()}</td>
                             <td className="p-2.5 text-center">
                               <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
@@ -2300,7 +2515,7 @@ export function AdminDashboardClient({
                         {viewingCustomer.commissions.map((c: any) => (
                           <tr key={c.id} className="border-b border-hairline/60 hover:bg-surface-2/10">
                             <td className="p-2.5 font-semibold text-ink">{c.title}</td>
-                            <td className="p-2.5 text-ink-subtle">{new Date(c.createdAt).toLocaleDateString()}</td>
+                            <td className="p-2.5 text-ink-subtle">{formatDate(c.createdAt)}</td>
                             <td className="p-2.5 text-right text-ink">₹{c.budget.toLocaleString()}</td>
                             <td className="p-2.5 text-center">
                               <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border border-primary/30 text-primary bg-primary/5 uppercase">

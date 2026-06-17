@@ -4,6 +4,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { Navbar, Footer } from "@/components/navigation";
 import { ArrowRight, Sparkles, Paintbrush, Layers, ShieldCheck } from "lucide-react";
+import { getOptimizedUrl } from "@/lib/cloudinary-utils";
 
 export const revalidate = 60; // Revalidate every minute
 
@@ -114,7 +115,7 @@ export default async function Home() {
                 >
                   <div className="relative aspect-[4/3] w-full rounded-sm overflow-hidden bg-surface-2 mb-4">
                     <Image
-                      src={painting.imageUrl}
+                      src={getOptimizedUrl(painting.imageUrl)}
                       alt={painting.title}
                       fill
                       sizes="(max-w-7xl) 33vw, 400px"

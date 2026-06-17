@@ -571,19 +571,7 @@ export default function CartPage() {
                     />
                   </div>
 
-                  <div className="flex flex-col gap-1">
-                    <label htmlFor="address" className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">Shipping Address *</label>
-                    <textarea
-                      id="address"
-                      name="address"
-                      required
-                      rows={3}
-                      value={addressValue}
-                      onChange={(e) => setAddressValue(e.target.value)}
-                      placeholder="e.g. Street details, Apt number, City, State, ZIP code…"
-                      className="bg-canvas text-ink text-xs px-3 py-2 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary resize-none transition-colors"
-                    />
-                  </div>
+                  <input type="hidden" id="address" name="address" value={addressValue} />
 
                   {/* Formatted address preview summary before order placement */}
                   {nameValue.trim() && phoneValue.trim() && addressValue.trim() && (

@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useActionState, useEffect, Suspense } from "react";
+import React, { useActionState, useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { registerAction } from "@/app/auth/actions";
 import { useAuth } from "@/components/providers";
 import { Navbar, Footer } from "@/components/navigation";
-import { Sparkles, ShieldAlert, ArrowRight, Loader2 } from "lucide-react";
+import { Sparkles, ShieldAlert, ArrowRight, Loader2, Eye, EyeOff } from "lucide-react";
 
 export default function RegisterPage() {
   return (
@@ -30,7 +30,12 @@ function RegisterForm() {
   const { setUser, user } = useAuth();
   
   const [state, formAction, isPending] = useActionState(registerAction, null);
-  const redirectTo = searchParams.get("redirect") || "/";
+  const [showPassword, setShowPassword] = useState(false);
+  
+  let redirectTo = searchParams.get("redirect") || "/";
+  if (redirectTo.includes("/auth/login") || redirectTo.includes("/auth/register")) {
+    redirectTo = "/";
+  }
 
   // Redirect if already logged in
   useEffect(() => {
@@ -109,15 +114,29 @@ function RegisterForm() {
             <label htmlFor="password" className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">
               Password
             </label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              required
-              autoComplete="new-password"
-              placeholder="Must be at least 6 characters…"
-              className="bg-canvas text-ink text-xs px-3 py-2.5 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary transition-colors"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                id="password"
+                name="password"
+                required
+                autoComplete="new-password"
+                placeholder="Must be at least 6 characters…"
+                className="w-full bg-canvas text-ink text-xs pl-3 pr-10 py-2.5 rounded-sm border border-hairline focus:border-primary focus:outline-none placeholder:text-ink-tertiary transition-colors"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-ink-subtle hover:text-ink transition-colors focus:outline-none cursor-pointer"
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
+            </div>
           </div>
 
           <button
@@ -150,3 +169,4 @@ function RegisterForm() {
     </main>
   );
 }
+

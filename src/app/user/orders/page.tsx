@@ -7,6 +7,7 @@ import { useAuth } from "@/components/providers";
 import { Navbar, Footer } from "@/components/navigation";
 import { getMyOrdersAction } from "@/app/actions";
 import { parseAddressString } from "@/lib/address";
+import { formatShortDate, formatShortDateTime } from "@/lib/utils";
 import { 
   ShoppingBag, Calendar, MapPin, IndianRupee, Truck, 
   Clock, ChevronDown, ChevronUp, Loader2, Heart, ArrowLeft, ShieldAlert 
@@ -172,7 +173,7 @@ export default function MyOrdersPage() {
                       <div className="flex items-center gap-4 text-[10px] text-ink-subtle">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5 text-primary" />
-                          {new Date(order.createdAt).toLocaleDateString("default", { month: "short", day: "numeric", year: "numeric" })}
+                          {formatShortDate(order.createdAt)}
                         </span>
                         <span>&bull;</span>
                         <span>{order.items.length} {order.items.length === 1 ? "Artwork" : "Artworks"}</span>
@@ -355,7 +356,7 @@ export default function MyOrdersPage() {
                                 <div className="flex items-center justify-between">
                                   <span className="font-bold text-ink uppercase text-[9px] tracking-wider">{evt.status.replace(/_/g, " ")}</span>
                                   <span className="text-ink-tertiary text-[10px] font-mono">
-                                    {new Date(evt.createdAt).toLocaleString("default", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                    {formatShortDateTime(evt.createdAt)}
                                   </span>
                                 </div>
                                 {evt.note && <p className="text-[11px] text-ink-subtle italic mt-0.5">&ldquo;{evt.note}&rdquo;</p>}

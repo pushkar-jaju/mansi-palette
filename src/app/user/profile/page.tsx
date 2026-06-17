@@ -16,6 +16,8 @@ import {
   User, Phone, Shield, MapPin, 
   Plus, Trash2, Camera, ShoppingBag, Heart, Loader2, Check, AlertCircle 
 } from "lucide-react";
+import { parseAddressString, formatAddress, validatePhone, validatePincode } from "@/lib/address";
+import { formatDate } from "@/lib/utils";
 
 function ProfilePageContent() {
   const { user, setUser } = useAuth();
@@ -36,7 +38,22 @@ function ProfilePageContent() {
   // Form states
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFileName, setAvatarFileName] = useState("");
-  const [newAddress, setNewAddress] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newLine, setNewLine] = useState("");
+  const [newCity, setNewCity] = useState("");
+  const [newState, setNewState] = useState("");
+  const [newPincode, setNewPincode] = useState("");
+  const [newType, setNewType] = useState("Home");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // pre-fill name and phone when profileData is available
+  useEffect(() => {
+    if (profileData) {
+      setNewName((prev) => prev || profileData.name || "");
+      setNewPhone((prev) => prev || profileData.phone || "");
+    }
+  }, [profileData]);
 
   const loadProfile = async () => {
     if (!user) return;
@@ -93,14 +110,45 @@ function ProfilePageContent() {
 
   const handleAddAddress = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAddress.trim()) return;
-
+    setFormError(null);
     setSuccess(null);
     setError(null);
+
+    if (!newName.trim() || !newPhone.trim() || !newLine.trim() || !newCity.trim() || !newState.trim() || !newPincode.trim()) {
+      setFormError("All fields are required to save address.");
+      return;
+    }
+
+    if (!validatePhone(newPhone)) {
+      setFormError("Please enter a valid 10-digit Indian phone number starting with 6/7/8/9.");
+      return;
+    }
+
+    if (!validatePincode(newPincode)) {
+      setFormError("Please enter a valid 6-digit Indian PIN code.");
+      return;
+    }
+
     startAddressTransition(async () => {
-      const res = await saveAddressAction(newAddress.trim());
+      const formatted = formatAddress({
+        type: newType,
+        name: newName.trim(),
+        phone: newPhone.trim(),
+        addressLine: newLine.trim(),
+        city: newCity.trim(),
+        state: newState.trim(),
+        pincode: newPincode.trim(),
+      });
+
+      const res = await saveAddressAction(formatted);
       if (res.success) {
-        setNewAddress("");
+        // Reset form inputs (except name/phone which can persist or reload from profileData)
+        setNewLine("");
+        setNewCity("");
+        setNewState("");
+        setNewPincode("");
+        setNewType("Home");
+
         setSuccess(redirectUrl ? "Address saved! Redirecting to checkout..." : "Address saved to address book.");
         await loadProfile();
         
@@ -312,46 +360,176 @@ function ProfilePageContent() {
 
                 {/* Address List */}
                 {profileData.savedAddresses && profileData.savedAddresses.length > 0 ? (
-                  <div className="flex flex-col gap-3">
-                    {profileData.savedAddresses.map((addr: string, idx: number) => (
-                      <div key={idx} className="flex justify-between items-center bg-canvas border border-hairline rounded-sm p-3.5 text-xs animate-in fade-in duration-150">
-                        <span className="text-ink-muted leading-relaxed whitespace-pre-wrap">{addr}</span>
-                        <button
-                          onClick={() => handleDeleteAddress(idx)}
-                          disabled={addressPending}
-                          className="p-1 rounded-sm text-ink-subtle hover:text-red-400 transition-colors disabled:opacity-50 cursor-pointer"
-                          title="Delete Address"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {profileData.savedAddresses.map((addr: string, idx: number) => {
+                      const parsed = parseAddressString(addr);
+                      return (
+                        <div key={idx} className="flex justify-between items-start bg-canvas border border-hairline rounded-md p-4 text-xs animate-in fade-in duration-150 gap-4 hover:border-hairline-strong transition-all">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <span className="font-semibold text-ink text-xs">
+                                {parsed.name || profileData.name}
+                              </span>
+                              {parsed.type && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[8.5px] font-bold bg-primary/10 text-primary uppercase border border-primary/20">
+                                  {parsed.type}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-ink-subtle block font-mono">
+                              Phone: {parsed.phone || profileData.phone || "N/A"}
+                            </span>
+                            <p className="text-[11px] text-ink-muted leading-relaxed mt-2 whitespace-pre-wrap font-sans">
+                              {parsed.addressLine}
+                              {parsed.cityState && `\n${parsed.cityState}`}
+                              {parsed.pincode && `\nPin Code: ${parsed.pincode}`}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleDeleteAddress(idx)}
+                            disabled={addressPending}
+                            className="p-1.5 rounded-sm text-ink-subtle hover:text-red-400 hover:bg-surface-2 transition-all disabled:opacity-50 cursor-pointer flex-shrink-0"
+                            title="Delete Address"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-xs text-ink-tertiary italic py-2">No addresses saved to book yet.</p>
                 )}
 
                 {/* Add new address */}
-                <form onSubmit={handleAddAddress} className="flex flex-col gap-2 border-t border-hairline pt-4 mt-2">
-                  <label className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">Add New Shipping Address</label>
-                  <div className="flex gap-2">
+                <form onSubmit={handleAddAddress} className="flex flex-col gap-4 border-t border-hairline pt-6 mt-4">
+                  <span className="text-[10px] text-ink-subtle uppercase tracking-wider font-semibold">Add New Shipping Address</span>
+                  
+                  {formError && (
+                    <div className="p-3 bg-red-950/20 border border-red-900/40 text-red-400 text-xs rounded-sm flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <span>{formError}</span>
+                    </div>
+                  )}
+
+                  {/* Address Type */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[9px] text-ink-subtle uppercase tracking-wider font-semibold">Address Type *</span>
+                    <div className="flex gap-2">
+                      {["Home", "Office", "Other"].map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setNewType(t)}
+                          className={`flex-1 py-1.5 border text-xs font-semibold rounded-sm transition-all cursor-pointer ${
+                            newType === t
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-canvas border-hairline text-ink-subtle hover:bg-surface-2"
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Recipient Details */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="addr-name" className="text-[9px] text-ink-subtle uppercase tracking-wider font-semibold">Recipient Name *</label>
+                      <input
+                        type="text"
+                        id="addr-name"
+                        required
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="Recipient's full name"
+                        className="bg-canvas text-ink text-xs px-3 py-1.5 rounded-sm border border-hairline focus:outline-none focus:border-primary placeholder:text-ink-tertiary transition-colors"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="addr-phone" className="text-[9px] text-ink-subtle uppercase tracking-wider font-semibold">Phone Number *</label>
+                      <input
+                        type="tel"
+                        id="addr-phone"
+                        required
+                        maxLength={10}
+                        value={newPhone}
+                        onChange={(e) => setNewPhone(e.target.value.replace(/\D/g, ""))}
+                        placeholder="10-digit mobile number"
+                        className="bg-canvas text-ink text-xs px-3 py-1.5 rounded-sm border border-hairline focus:outline-none focus:border-primary placeholder:text-ink-tertiary transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Street Address */}
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="addr-line" className="text-[9px] text-ink-subtle uppercase tracking-wider font-semibold">Street Address / Apartment / House No. *</label>
                     <textarea
-                      placeholder="Write full shipping details including Pin/Zip code…"
+                      id="addr-line"
+                      required
                       rows={2}
-                      value={newAddress}
-                      onChange={(e) => setNewAddress(e.target.value)}
-                      className="flex-1 bg-canvas border border-hairline text-ink text-xs px-2.5 py-2 rounded-sm focus:border-primary focus:outline-none resize-none transition-colors"
+                      value={newLine}
+                      onChange={(e) => setNewLine(e.target.value)}
+                      placeholder="e.g. Flat 303, Rosewood Apts, Linking Road"
+                      className="bg-canvas text-ink text-xs px-3 py-2 rounded-sm border border-hairline focus:outline-none focus:border-primary placeholder:text-ink-tertiary resize-none transition-colors"
                       autoFocus={isFromCheckout}
                     />
-                    <button
-                      type="submit"
-                      disabled={addressPending || !newAddress.trim()}
-                      className="px-4 bg-surface-2 border border-hairline hover:bg-surface-3 hover:border-hairline-strong rounded-sm text-xs font-semibold text-ink flex items-center justify-center gap-1 transition-colors disabled:opacity-50 cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Save Address
-                    </button>
                   </div>
+
+                  {/* City, State, PIN Code */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="addr-city" className="text-[9px] text-ink-subtle uppercase tracking-wider font-semibold">City *</label>
+                      <input
+                        type="text"
+                        id="addr-city"
+                        required
+                        value={newCity}
+                        onChange={(e) => setNewCity(e.target.value)}
+                        placeholder="e.g. Mumbai"
+                        className="bg-canvas text-ink text-xs px-3 py-1.5 rounded-sm border border-hairline focus:outline-none focus:border-primary placeholder:text-ink-tertiary transition-colors"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="addr-state" className="text-[9px] text-ink-subtle uppercase tracking-wider font-semibold">State *</label>
+                      <input
+                        type="text"
+                        id="addr-state"
+                        required
+                        value={newState}
+                        onChange={(e) => setNewState(e.target.value)}
+                        placeholder="e.g. Maharashtra"
+                        className="bg-canvas text-ink text-xs px-3 py-1.5 rounded-sm border border-hairline focus:outline-none focus:border-primary placeholder:text-ink-tertiary transition-colors"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="addr-pincode" className="text-[9px] text-ink-subtle uppercase tracking-wider font-semibold">PIN Code *</label>
+                      <input
+                        type="text"
+                        id="addr-pincode"
+                        required
+                        maxLength={6}
+                        value={newPincode}
+                        onChange={(e) => setNewPincode(e.target.value.replace(/\D/g, ""))}
+                        placeholder="e.g. 400050"
+                        className="bg-canvas text-ink text-xs px-3 py-1.5 rounded-sm border border-hairline focus:outline-none focus:border-primary placeholder:text-ink-tertiary transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={addressPending}
+                    className="mt-2 w-full py-3 bg-primary hover:bg-primary-hover border border-primary-focus text-primary-foreground text-xs font-semibold rounded-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {addressPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Plus className="w-4 h-4" />
+                    )}
+                    Save Address Details
+                  </button>
                 </form>
               </div>
 
@@ -393,7 +571,7 @@ function ProfilePageContent() {
                   </div>
                   <div className="flex justify-between">
                     <span>Joined Studio:</span>
-                    <span className="text-ink-muted">{new Date(profileData.createdAt).toLocaleDateString()}</span>
+                    <span className="text-ink-muted">{formatDate(profileData.createdAt)}</span>
                   </div>
                 </div>
               </div>
